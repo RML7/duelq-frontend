@@ -1,10 +1,14 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { authApi } from '@/api/auth'
+import ChallengeModal from '@/components/ChallengeModal.vue'
+import Toast from '@/components/Toast.vue'
 
+// ref — это функция из Vue, которая делает переменную реактивной. Это значит: когда значение меняется — шаблон автоматически перерисовывается.
 const user = ref(null)
 const loading = ref(true)
 const error = ref(null)
+const showChallenge = ref(false)
 
 onMounted(async () => {
   const tg = window.Telegram?.WebApp
@@ -30,6 +34,7 @@ onMounted(async () => {
 </script>
 
 <template>
+  <Toast />
   <div class="app">
     <div v-if="loading" class="loading">Загрузка...</div>
 
@@ -46,7 +51,9 @@ onMounted(async () => {
         <button class="add-btn">+</button>
       </div>
 
-      <button class="btn-play">👊 Вызвать друга</button>
+      <button class="btn-play" @click="showChallenge = true">👊 Вызвать друга</button>
+
+      <ChallengeModal v-if="showChallenge" @close="showChallenge = false" />
 
       <div class="stats">
         <div class="stat-card">

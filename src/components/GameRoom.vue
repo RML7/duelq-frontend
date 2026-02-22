@@ -84,12 +84,12 @@ onMounted(() => {
   }
 
   if (step.value === 'waiting') {
-    startWaitingTimer()
+    startTimer()
   }
 })
 
 onUnmounted(() => {
-  stopWaitingTimer()
+  stopTimer()
   offMessage(MessageType.GAME_READY)
   offMessage(MessageType.QUESTION)
   offMessage(MessageType.ROUND_RESULT)
@@ -97,7 +97,7 @@ onUnmounted(() => {
   disconnect()
 })
 
-function startWaitingTimer(): void {
+function startTimer(): void {
   if (step.value !== 'waiting' || !duel.value.created_at) return
 
   function updateWaitingTime(): void {
@@ -110,7 +110,7 @@ function startWaitingTimer(): void {
 
     if (remaining <= 0) {
       timeRemaining.value = 0
-      stopWaitingTimer()
+      stopTimer()
       duelStore.finishDuel()
       return
     }
@@ -125,7 +125,7 @@ function startWaitingTimer(): void {
   }, 1000)
 }
 
-function stopWaitingTimer(): void {
+function stopTimer(): void {
   if (waitingTimer) {
     clearInterval(waitingTimer)
     waitingTimer = null
@@ -149,7 +149,7 @@ function handleGameReady(data: GameReadyData): void {
   console.log('🎮 Game is ready!', data)
   duel.value = data.duel
   duelStore.updateActiveDuel(data.duel)
-  stopWaitingTimer()
+  stopTimer()
   step.value = 'syncing'
 }
 
@@ -175,7 +175,7 @@ function handleRoundResult(data: RoundResultData): void {
 
 function handleGameFinished(data: GameFinishedData): void {
   console.log('🏁 Game finished:', data)
-  stopWaitingTimer()
+  stopTimer()
   duelStore.finishDuel()
 }
 

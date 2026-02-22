@@ -22,12 +22,12 @@ interface TelegramWebAppWithShare {
 
 const STAKES = [10, 25, 50, 100] as const
 const CATEGORIES: Category[] = [
-  { label: 'Кино', value: 'general' },
+  { label: 'Кино', value: 'cinema' },
 ]
 
 const step = ref<Step>('setup')
 const stake = ref<number>(25)
-const category = ref<DuelCategory>('general')
+const category = ref<DuelCategory>('cinema')
 const duel = ref<DuelResponse | null>(null)
 const timeRemaining = ref<number>(300)
 const duelStore = useDuelStore()

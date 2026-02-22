@@ -1,6 +1,6 @@
 // Типы статусов и категорий
 export type DuelStatus = 'pending' | 'accepted' | 'in_progress' | 'completed' | 'cancelled'
-export type DuelCategory = 'general' | 'science' | 'history' | 'sports' // добавь свои категории
+export type DuelCategory = 'cinema' // добавь свои категории
 
 // Базовые типы
 export interface DuelResponse {

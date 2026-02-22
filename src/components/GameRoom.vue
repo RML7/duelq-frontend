@@ -70,6 +70,33 @@ const categoryLabel = computed(() => {
 
 let waitingTimer: number | null = null
 
+onMounted(() => {
+  onMessage(MessageType.GAME_READY, handleGameReady)
+  onMessage(MessageType.QUESTION, handleQuestion)
+  onMessage(MessageType.ROUND_RESULT, handleRoundResult)
+  onMessage(MessageType.GAME_FINISHED, handleGameFinished)
+
+  const token = localStorage.getItem('token')
+  if (token) {
+    connect(duel.value.id, token)
+  } else {
+    console.error('JWT token is missing, cannot connect to WebSocket')
+  }
+
+  if (step.value === 'waiting') {
+    startWaitingTimer()
+  }
+})
+
+onUnmounted(() => {
+  stopWaitingTimer()
+  offMessage(MessageType.GAME_READY)
+  offMessage(MessageType.QUESTION)
+  offMessage(MessageType.ROUND_RESULT)
+  offMessage(MessageType.GAME_FINISHED)
+  disconnect()
+})
+
 function startWaitingTimer(): void {
   if (step.value !== 'waiting' || !duel.value.created_at) return
 
@@ -161,33 +188,6 @@ function selectAnswer(answerId: number): void {
   // TODO: Отправить ответ на сервер через WebSocket
   console.log('Selected answer:', answerId)
 }
-
-onMounted(() => {
-  onMessage(MessageType.GAME_READY, handleGameReady)
-  onMessage(MessageType.QUESTION, handleQuestion)
-  onMessage(MessageType.ROUND_RESULT, handleRoundResult)
-  onMessage(MessageType.GAME_FINISHED, handleGameFinished)
-
-  const token = localStorage.getItem('token')
-  if (token) {
-    connect(duel.value.id, token)
-  } else {
-    console.error('JWT token is missing, cannot connect to WebSocket')
-  }
-
-  if (step.value === 'waiting') {
-    startWaitingTimer()
-  }
-})
-
-onUnmounted(() => {
-  stopWaitingTimer()
-  offMessage(MessageType.GAME_READY)
-  offMessage(MessageType.QUESTION)
-  offMessage(MessageType.ROUND_RESULT)
-  offMessage(MessageType.GAME_FINISHED)
-  disconnect()
-})
 </script>
 
 <template>

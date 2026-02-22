@@ -37,12 +37,6 @@ const error = ref<string | null>(null)
 const duelStore = useDuelStore()
 const hasActiveDuel = computed(() => Boolean(duelStore.activeDuel))
 
-function resumeDuel(): void {
-  if (duelStore.activeDuel) {
-    duelStore.openGameRoom(duelStore.activeDuel)
-  }
-}
-
 onMounted(async () => {
   const tg = window.Telegram?.WebApp
   if (!tg) {
@@ -68,6 +62,11 @@ onMounted(async () => {
   loading.value = false
 })
 
+function resumeDuel(): void {
+  if (duelStore.activeDuel) {
+    duelStore.openGameRoom(duelStore.activeDuel)
+  }
+}
 </script>
 
 <template>

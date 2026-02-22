@@ -1,24 +1,15 @@
 <script setup lang="ts">
-import { ref, computed, onUnmounted } from 'vue'
+import { ref } from 'vue'
 import { duelsApi } from '@/api/duels'
-import { useWebSocket, MessageType } from '@/composables/useWebSocket'
 import { useDuelStore } from '@/stores/duel'
-import type { DuelResponse, DuelCategory } from '@/api/types'
+import type { DuelCategory } from '@/api/types'
 
 interface Category {
   label: string
   value: DuelCategory
 }
 
-type Step = 'setup' | 'loading' | 'waiting'
-
-interface GameReadyData {
-  duel: DuelResponse
-}
-
-interface TelegramWebAppWithShare {
-  openTelegramLink?: (url: string) => void
-}
+type Step = 'setup' | 'loading'
 
 const STAKES = [10, 25, 50, 100] as const
 const CATEGORIES: Category[] = [
@@ -28,92 +19,19 @@ const CATEGORIES: Category[] = [
 const step = ref<Step>('setup')
 const stake = ref<number>(25)
 const category = ref<DuelCategory>('cinema')
-const duel = ref<DuelResponse | null>(null)
-const timeRemaining = ref<number>(300)
 const duelStore = useDuelStore()
-
-const DUEL_TIMEOUT_SECONDS = 300
-
-const categoryLabel = computed(() => {
-  return CATEGORIES.find(c => c.value === category.value)?.label || category.value
-})
-
-// WebSocket
-const { connect, onMessage } = useWebSocket()
-
-// Таймер для отсчёта времени ожидания
-let timerInterval: number | null = null
-
-function startTimer(): void {
-  if (!duel.value?.created_at) return
-
-  const createdTime = new Date(duel.value.created_at).getTime()
-  
-  timerInterval = window.setInterval(() => {
-    const now = Date.now()
-    const elapsed = Math.floor((now - createdTime) / 1000)
-    const remaining = DUEL_TIMEOUT_SECONDS - elapsed
-
-    if (remaining <= 0) {
-      timeRemaining.value = 0
-      if (timerInterval) clearInterval(timerInterval)
-      // TODO: показать сообщение "Время истекло" и вернуть в setup
-      step.value = 'setup'
-    } else {
-      timeRemaining.value = remaining
-    }
-  }, 1000)
-}
-
-function stopTimer(): void {
-  if (timerInterval) {
-    clearInterval(timerInterval)
-    timerInterval = null
-  }
-}
-
-onUnmounted(() => {
-  stopTimer()
-})
 
 async function createDuel(): Promise<void> {
   step.value = 'loading'
 
   try {
     const data = await duelsApi.create({ stake: stake.value, category: category.value })
-    duel.value = data.duel
-    step.value = 'waiting'
-    startTimer()
-    
-    // Подключаемся к WebSocket
-    const token = localStorage.getItem('token')
-    if (token) {
-      connect(duel.value.id, token)
-    }
-    
-    // Подписываемся на сообщение game_ready
-    onMessage(MessageType.GAME_READY, handleGameReady)
+    duelStore.openGameRoom(data.duel)
   } catch (e) {
     // Ошибка уже обработана в interceptor
     step.value = 'setup'
   }
 }
-
-function handleGameReady(data: GameReadyData): void {
-  console.log('🎮 Game is ready!', data)
-  duelStore.setGameReady(data.duel)
-}
-
-function shareLink(): void {
-  const tg = window.Telegram?.WebApp as TelegramWebAppWithShare | undefined
-
-  if (duel.value && tg?.openTelegramLink) {
-    tg.openTelegramLink(
-      `https://t.me/share/url?url=${encodeURIComponent(duel.value.invite_link)}&text=${encodeURIComponent('Принимай вызов! Сыграем в DuelQ? 🎯')}`
-    )
-  }
-}
-
 </script>
 
 <template>
@@ -165,36 +83,6 @@ function shareLink(): void {
           <div class="spinner"></div>
           <p>Создаём дуэль…</p>
         </div>
-      </template>
-
-      <!-- ── STEP: waiting ── -->
-      <template v-else-if="step === 'waiting'">
-        <div class="sheet-header">
-          <span class="sheet-title">Выберите оппонента</span>
-          <button class="close-btn" @click="duelStore.closeChallenge()">✕</button>
-        </div>
-
-        <div class="waiting-card">
-          <div class="timer-display">{{ timeRemaining }}</div>
-          <div class="timer-label">секунд до отмены</div>
-          <div class="waiting-title">Отправьте ссылку другу</div>
-          <div class="waiting-subtitle">Нажмите кнопку ниже и выберите друга в Telegram. Как только он примет вызов — дуэль начнётся!</div>
-        </div>
-
-        <div class="duel-info">
-          <div class="duel-info-row">
-            <span class="duel-info-label">Ставка</span>
-            <span class="duel-info-value">⭐ {{ stake }} Stars</span>
-          </div>
-          <div class="duel-info-row">
-            <span class="duel-info-label">Категория</span>
-            <span class="duel-info-value">{{ categoryLabel }}</span>
-          </div>
-        </div>
-
-        <button class="btn-primary" @click="shareLink">
-          📤 Выбрать оппонента
-        </button>
       </template>
 
     </div>
@@ -306,16 +194,6 @@ function shareLink(): void {
   margin-bottom: 10px;
 }
 
-.btn-ghost {
-  background: transparent;
-  border: none;
-  color: #8888a0;
-  font-size: 14px;
-  width: 100%;
-  padding: 8px;
-  cursor: pointer;
-}
-
 /* Loading */
 .loading-block {
   display: flex;
@@ -338,76 +216,5 @@ function shareLink(): void {
 
 @keyframes spin {
   to { transform: rotate(360deg) }
-}
-
-/* Waiting Room */
-.waiting-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  padding: 32px 20px;
-  background: rgba(108, 92, 231, 0.08);
-  border: 1px solid rgba(108, 92, 231, 0.2);
-  border-radius: 16px;
-  margin-bottom: 24px;
-}
-
-.timer-display {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 56px;
-  font-weight: 700;
-  color: #6c5ce7;
-  line-height: 1;
-}
-
-.timer-label {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: #55556a;
-  margin-bottom: 8px;
-}
-
-.waiting-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #f0f0f5;
-  margin-top: 4px;
-}
-
-.waiting-subtitle {
-  font-size: 13px;
-  color: #8888a0;
-  text-align: center;
-  line-height: 1.5;
-}
-
-.duel-info {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 12px;
-  padding: 16px;
-  margin-bottom: 20px;
-}
-
-.duel-info-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.duel-info-label {
-  font-size: 13px;
-  color: #8888a0;
-}
-
-.duel-info-value {
-  font-size: 14px;
-  font-weight: 600;
-  color: #f0f0f5;
 }
 </style>

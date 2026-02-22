@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { authApi } from '@/api/auth'
 import ChallengeModal from '@/components/ChallengeModal.vue'
 import GameRoom from '@/components/GameRoom.vue'
@@ -34,8 +34,14 @@ declare global {
 const user = ref<TelegramUser | null>(null)
 const loading = ref<boolean>(true)
 const error = ref<string | null>(null)
-const hasActiveDuel = ref<boolean>(false)
 const duelStore = useDuelStore()
+const hasActiveDuel = computed(() => Boolean(duelStore.activeDuel))
+
+function resumeDuel(): void {
+  if (duelStore.activeDuel) {
+    duelStore.openGameRoom(duelStore.activeDuel)
+  }
+}
 
 onMounted(async () => {
   const tg = window.Telegram?.WebApp
@@ -54,9 +60,9 @@ onMounted(async () => {
     localStorage.setItem('token', data.token)
 
     // Проверить наличие активных дуэлей
-    hasActiveDuel.value = await duelStore.checkActiveDuel()
-  } catch (e: any) {
-    error.value = e.message || 'Произошла ошибка'
+    await duelStore.checkActiveDuel()
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : 'Произошла ошибка'
   }
 
   loading.value = false
@@ -93,7 +99,7 @@ onMounted(async () => {
       <button 
         v-else
         class="btn-resume" 
-        @click="duelStore.resumeActiveDuel()"
+        @click="resumeDuel"
       >
         🎮 Вернуться в дуэль
       </button>

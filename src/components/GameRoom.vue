@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useWebSocket, MessageType } from '@/composables/useWebSocket'
+import { useDuelStore } from '@/stores/duel'
 
 const props = defineProps({
   duel: {
@@ -9,7 +10,7 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['close', 'gameFinished'])
+const duelStore = useDuelStore()
 
 const { connected, onMessage } = useWebSocket()
 
@@ -34,7 +35,7 @@ function handleRoundResult(data) {
 
 function handleGameFinished(data) {
   console.log('🏁 Game finished:', data)
-  emit('gameFinished', data)
+  duelStore.closeGame()
 }
 </script>
 
@@ -71,7 +72,7 @@ function handleGameFinished(data) {
         </div>
       </div>
 
-      <button class="btn-close" @click="emit('close')">
+      <button class="btn-close" @click="duelStore.closeGame()">
         Закрыть (временно)
       </button>
     </div>

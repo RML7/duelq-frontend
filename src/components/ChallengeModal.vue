@@ -2,8 +2,7 @@
 import { ref, computed, onUnmounted } from 'vue'
 import { duelsApi } from '@/api/duels'
 import { useWebSocket, MessageType } from '@/composables/useWebSocket'
-
-const emit = defineEmits(['close', 'gameReady'])
+import { useDuelStore } from '@/stores/duel'
 
 const STAKES = [10, 25, 50, 100]
 const CATEGORIES = [
@@ -15,6 +14,7 @@ const stake = ref(25)
 const category = ref('cinema')
 const duel = ref(null)
 const timeRemaining = ref(300)
+const duelStore = useDuelStore()
 
 const DUEL_TIMEOUT_SECONDS = 300
 
@@ -23,7 +23,7 @@ const categoryLabel = computed(() => {
 })
 
 // WebSocket
-const { connected, connect, disconnect, onMessage } = useWebSocket()
+const { connect, onMessage } = useWebSocket()
 
 // Таймер для отсчёта времени ожидания
 let timerInterval = null
@@ -83,8 +83,7 @@ async function createDuel() {
 
 function handleGameReady(data) {
   console.log('🎮 Game is ready!', data)
-  // Уведомляем родительский компонент что игра готова
-  emit('gameReady', data.duel)
+  duelStore.setGameReady(data.duel)
 }
 
 function shareLink() {
@@ -100,14 +99,14 @@ function shareLink() {
 
 <template>
   <!-- Overlay -->
-  <div class="overlay" @click.self="emit('close')">
+  <div class="overlay" @click.self="duelStore.closeChallenge()">
     <div class="sheet">
 
       <!-- ── STEP: setup ── -->
       <template v-if="step === 'setup'">
         <div class="sheet-header">
           <span class="sheet-title">Вызов друга</span>
-          <button class="close-btn" @click="emit('close')">✕</button>
+          <button class="close-btn" @click="duelStore.closeChallenge()">✕</button>
         </div>
 
         <div class="section-label">Ставка</div>
@@ -153,7 +152,7 @@ function shareLink() {
       <template v-else-if="step === 'waiting'">
         <div class="sheet-header">
           <span class="sheet-title">Выберите оппонента</span>
-          <button class="close-btn" @click="emit('close')">✕</button>
+          <button class="close-btn" @click="duelStore.closeChallenge()">✕</button>
         </div>
 
         <div class="waiting-card">

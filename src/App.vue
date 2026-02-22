@@ -4,14 +4,13 @@ import { authApi } from '@/api/auth'
 import ChallengeModal from '@/components/ChallengeModal.vue'
 import GameRoom from '@/components/GameRoom.vue'
 import Toast from '@/components/Toast.vue'
+import { useDuelStore } from '@/stores/duel'
 
 // ref — это функция из Vue, которая делает переменную реактивной. Это значит: когда значение меняется — шаблон автоматически перерисовывается.
 const user = ref(null)
 const loading = ref(true)
 const error = ref(null)
-const showChallenge = ref(false)
-const showGame = ref(false)
-const currentDuel = ref(null)
+const duelStore = useDuelStore()
 
 onMounted(async () => {
   const tg = window.Telegram?.WebApp
@@ -35,24 +34,6 @@ onMounted(async () => {
   loading.value = false
 })
 
-function handleGameReady(duel) {
-  console.log('Game ready event received in App.vue:', duel)
-  currentDuel.value = duel
-  showChallenge.value = false
-  showGame.value = true
-}
-
-function handleGameFinished(result) {
-  console.log('Game finished:', result)
-  showGame.value = false
-  currentDuel.value = null
-  // TODO: Показать экран с результатами
-}
-
-function closeGame() {
-  showGame.value = false
-  currentDuel.value = null
-}
 </script>
 
 <template>
@@ -73,19 +54,13 @@ function closeGame() {
         <button class="add-btn">+</button>
       </div>
 
-      <button class="btn-play" @click="showChallenge = true">👊 Вызвать друга</button>
+      <button class="btn-play" @click="duelStore.openChallenge()">👊 Вызвать друга</button>
 
-      <ChallengeModal 
-        v-if="showChallenge" 
-        @close="showChallenge = false"
-        @game-ready="handleGameReady"
-      />
+      <ChallengeModal v-if="duelStore.showChallenge" />
 
       <GameRoom
-        v-if="showGame && currentDuel"
-        :duel="currentDuel"
-        @close="closeGame"
-        @game-finished="handleGameFinished"
+        v-if="duelStore.showGame && duelStore.currentDuel"
+        :duel="duelStore.currentDuel"
       />
 
       <div class="stats">

@@ -1,6 +1,9 @@
 import { ref, onUnmounted } from 'vue'
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8081/api/v1'
+const WS_ENV_URL = import.meta.env.VITE_WS_URL
+const WS_URL = WS_ENV_URL
+  ? `${window.location.origin.replace(/^https:/, 'wss:')}${WS_ENV_URL}`.replace(/\/$/, '')
+  : null
 
 // Message types (должны совпадать с бэкендом)
 export const MessageType = {
@@ -28,6 +31,11 @@ export function useWebSocket() {
    * @param {string} token - JWT токен
    */
   function connect(duelId, token) {
+    if (!WS_URL) {
+      console.error('WebSocket URL is not configured')
+      return
+    }
+
     if (ws.value) {
       console.warn('WebSocket already connected')
       return

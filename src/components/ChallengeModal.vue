@@ -1,10 +1,9 @@
 <script setup>
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import { duelsApi } from '@/api/duels'
+import { useWebSocket, MessageType } from '@/composables/useWebSocket'
 
-const emit = defineEmits(['close'])
-
-const BOT_USERNAME = import.meta.env.VITE_BOT_USERNAME || 'DuelQBot'
+const emit = defineEmits(['close', 'gameReady'])
 
 const STAKES = [10, 25, 50, 100]
 const CATEGORIES = [
@@ -22,6 +21,9 @@ const DUEL_TIMEOUT_SECONDS = 300
 const categoryLabel = computed(() => {
   return CATEGORIES.find(c => c.value === category.value)?.label || category.value
 })
+
+// WebSocket
+const { connected, connect, disconnect, onMessage } = useWebSocket()
 
 // Таймер для отсчёта времени ожидания
 let timerInterval = null
@@ -58,36 +60,6 @@ onUnmounted(() => {
   stopTimer()
 })
 
-// TODO: Polling для проверки статуса дуэли
-// Когда будет готов эндпоинт GET /duels/{id}, раскомментировать:
-/*
-let pollingInterval = null
-
-watch(step, (newStep) => {
-  if (newStep === 'waiting') {
-    // Начинаем polling каждые 3 секунды
-    pollingInterval = setInterval(async () => {
-      try {
-        const { data } = await duelsApi.get(duel.value.id)
-        if (data.duel.status === 'active' && data.duel.opponent_id) {
-          // Оппонент присоединился! Переходим в игру
-          clearInterval(pollingInterval)
-          // TODO: emit('startGame', data.duel) или router.push()
-        }
-      } catch (e) {
-        // Ошибка уже обработана в interceptor
-      }
-    }, 3000)
-  } else {
-    // Останавливаем polling при выходе из комнаты ожидания
-    if (pollingInterval) {
-      clearInterval(pollingInterval)
-      pollingInterval = null
-    }
-  }
-})
-*/
-
 async function createDuel() {
   step.value = 'loading'
 
@@ -96,10 +68,23 @@ async function createDuel() {
     duel.value = data.duel
     step.value = 'waiting'
     startTimer()
+    
+    // Подключаемся к WebSocket
+    const token = localStorage.getItem('token')
+    connect(duel.value.id, token)
+    
+    // Подписываемся на сообщение game_ready
+    onMessage(MessageType.GAME_READY, handleGameReady)
   } catch (e) {
     // Ошибка уже обработана в interceptor
     step.value = 'setup'
   }
+}
+
+function handleGameReady(data) {
+  console.log('🎮 Game is ready!', data)
+  // Уведомляем родительский компонент что игра готова
+  emit('gameReady', data.duel)
 }
 
 function shareLink() {
@@ -111,14 +96,6 @@ function shareLink() {
   }
 }
 
-function reset() {
-  stopTimer()
-  step.value = 'setup'
-  stake.value = 25
-  category.value = 'cinema'
-  duel.value = null
-  timeRemaining.value = 30
-}
 </script>
 
 <template>

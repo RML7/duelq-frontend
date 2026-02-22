@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { duelsApi } from '@/api/duels'
 
 const emit = defineEmits(['close'])
@@ -11,24 +11,91 @@ const CATEGORIES = [
   { label: 'Кино', value: 'cinema' },
 ]
 
-const step = ref('setup') // 'setup' | 'loading' | 'invite'
+const step = ref('setup') // 'setup' | 'loading' | 'waiting'
 const stake = ref(25)
 const category = ref('cinema')
-const inviteLink = ref('')
-const copied = ref(false)
+const duel = ref(null)
+const timeRemaining = ref(300)
+
+const DUEL_TIMEOUT_SECONDS = 300
 
 const categoryLabel = computed(() => {
   return CATEGORIES.find(c => c.value === category.value)?.label || category.value
 })
+
+// Таймер для отсчёта времени ожидания
+let timerInterval = null
+
+function startTimer() {
+  if (!duel.value?.created_at) return
+
+  const createdTime = new Date(duel.value.created_at).getTime()
+  
+  timerInterval = setInterval(() => {
+    const now = Date.now()
+    const elapsed = Math.floor((now - createdTime) / 1000)
+    const remaining = DUEL_TIMEOUT_SECONDS - elapsed
+
+    if (remaining <= 0) {
+      timeRemaining.value = 0
+      clearInterval(timerInterval)
+      // TODO: показать сообщение "Время истекло" и вернуть в setup
+      step.value = 'setup'
+    } else {
+      timeRemaining.value = remaining
+    }
+  }, 1000)
+}
+
+function stopTimer() {
+  if (timerInterval) {
+    clearInterval(timerInterval)
+    timerInterval = null
+  }
+}
+
+onUnmounted(() => {
+  stopTimer()
+})
+
+// TODO: Polling для проверки статуса дуэли
+// Когда будет готов эндпоинт GET /duels/{id}, раскомментировать:
+/*
+let pollingInterval = null
+
+watch(step, (newStep) => {
+  if (newStep === 'waiting') {
+    // Начинаем polling каждые 3 секунды
+    pollingInterval = setInterval(async () => {
+      try {
+        const { data } = await duelsApi.get(duel.value.id)
+        if (data.duel.status === 'active' && data.duel.opponent_id) {
+          // Оппонент присоединился! Переходим в игру
+          clearInterval(pollingInterval)
+          // TODO: emit('startGame', data.duel) или router.push()
+        }
+      } catch (e) {
+        // Ошибка уже обработана в interceptor
+      }
+    }, 3000)
+  } else {
+    // Останавливаем polling при выходе из комнаты ожидания
+    if (pollingInterval) {
+      clearInterval(pollingInterval)
+      pollingInterval = null
+    }
+  }
+})
+*/
 
 async function createDuel() {
   step.value = 'loading'
 
   try {
     const { data } = await duelsApi.create({ stake: stake.value, category: category.value })
-    const duel = data.duel
-    inviteLink.value = duel.invite_link
-    step.value = 'invite'
+    duel.value = data.duel
+    step.value = 'waiting'
+    startTimer()
   } catch (e) {
     // Ошибка уже обработана в interceptor
     step.value = 'setup'
@@ -37,31 +104,20 @@ async function createDuel() {
 
 function shareLink() {
   const tg = window.Telegram?.WebApp
-  if (tg) {
+  if (tg && duel.value) {
     tg.openTelegramLink(
-      `https://t.me/share/url?url=${encodeURIComponent(inviteLink.value)}&text=${encodeURIComponent('Принимай вызов! Сыграем в DuelQ? 🎯')}`
+      `https://t.me/share/url?url=${encodeURIComponent(duel.value.invite_link)}&text=${encodeURIComponent('Принимай вызов! Сыграем в DuelQ? 🎯')}`
     )
-  } else {
-    copyLink()
-  }
-}
-
-async function copyLink() {
-  try {
-    await navigator.clipboard.writeText(inviteLink.value)
-    copied.value = true
-    setTimeout(() => (copied.value = false), 2000)
-  } catch {
-    // fallback — выделяем текст
   }
 }
 
 function reset() {
+  stopTimer()
   step.value = 'setup'
   stake.value = 25
   category.value = 'cinema'
-  inviteLink.value = ''
-  copied.value = false
+  duel.value = null
+  timeRemaining.value = 30
 }
 </script>
 
@@ -116,28 +172,33 @@ function reset() {
         </div>
       </template>
 
-      <!-- ── STEP: invite ── -->
-      <template v-else-if="step === 'invite'">
+      <!-- ── STEP: waiting ── -->
+      <template v-else-if="step === 'waiting'">
         <div class="sheet-header">
-          <span class="sheet-title">Приглашение готово!</span>
+          <span class="sheet-title">Выберите оппонента</span>
           <button class="close-btn" @click="emit('close')">✕</button>
         </div>
 
-        <div class="invite-info">
-          <span>⭐ {{ stake }} Stars · {{ categoryLabel }}</span>
+        <div class="waiting-card">
+          <div class="timer-display">{{ timeRemaining }}</div>
+          <div class="timer-label">секунд до отмены</div>
+          <div class="waiting-title">Отправьте ссылку другу</div>
+          <div class="waiting-subtitle">Нажмите кнопку ниже и выберите друга в Telegram. Как только он примет вызов — дуэль начнётся!</div>
         </div>
 
-        <div class="link-box" @click="copyLink">
-          <span class="link-text">{{ inviteLink }}</span>
-          <span class="copy-hint">{{ copied ? '✓' : '⎘' }}</span>
+        <div class="duel-info">
+          <div class="duel-info-row">
+            <span class="duel-info-label">Ставка</span>
+            <span class="duel-info-value">⭐ {{ stake }} Stars</span>
+          </div>
+          <div class="duel-info-row">
+            <span class="duel-info-label">Категория</span>
+            <span class="duel-info-value">{{ categoryLabel }}</span>
+          </div>
         </div>
 
         <button class="btn-primary" @click="shareLink">
-          📤 Поделиться в Telegram
-        </button>
-
-        <button class="btn-ghost" @click="reset">
-          ← Создать другой
+          📤 Выбрать оппонента
         </button>
       </template>
 
@@ -284,39 +345,74 @@ function reset() {
   to { transform: rotate(360deg) }
 }
 
-/* Invite */
-.invite-info {
-  text-align: center;
-  color: #ffd700;
-  font-size: 14px;
-  margin-bottom: 20px;
-}
-
-.link-box {
+/* Waiting Room */
+.waiting-card {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 12px;
-  padding: 12px 14px;
-  margin-bottom: 20px;
-  cursor: pointer;
+  gap: 12px;
+  padding: 32px 20px;
+  background: rgba(108, 92, 231, 0.08);
+  border: 1px solid rgba(108, 92, 231, 0.2);
+  border-radius: 16px;
+  margin-bottom: 24px;
 }
 
-.link-text {
+.timer-display {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-  color: #a29bfe;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
+  font-size: 56px;
+  font-weight: 700;
+  color: #6c5ce7;
+  line-height: 1;
 }
 
-.copy-hint {
-  font-size: 16px;
+.timer-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
   color: #55556a;
-  flex-shrink: 0;
+  margin-bottom: 8px;
+}
+
+.waiting-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #f0f0f5;
+  margin-top: 4px;
+}
+
+.waiting-subtitle {
+  font-size: 13px;
+  color: #8888a0;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.duel-info {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.duel-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.duel-info-label {
+  font-size: 13px;
+  color: #8888a0;
+}
+
+.duel-info-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #f0f0f5;
 }
 </style>

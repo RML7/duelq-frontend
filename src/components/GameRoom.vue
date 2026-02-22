@@ -73,9 +73,10 @@ let waitingTimer: number | null = null
 function startWaitingTimer(): void {
   if (step.value !== 'waiting' || !duel.value.created_at) return
 
-  const createdTime = new Date(duel.value.created_at).getTime()
+  function updateWaitingTime(): void {
+    if (!duel.value.created_at) return
 
-  waitingTimer = window.setInterval(() => {
+    const createdTime = new Date(duel.value.created_at).getTime()
     const now = Date.now()
     const elapsed = Math.floor((now - createdTime) / 1000)
     const remaining = DUEL_TIMEOUT_SECONDS - elapsed
@@ -88,6 +89,12 @@ function startWaitingTimer(): void {
     }
 
     timeRemaining.value = remaining
+  }
+
+  updateWaitingTime()
+
+  waitingTimer = window.setInterval(() => {
+    updateWaitingTime()
   }, 1000)
 }
 

@@ -14,7 +14,6 @@ const { toasts, removeToast } = useToast()
         :class="toast.type"
         @click="removeToast(toast.id)"
       >
-        <span class="toast-icon">{{ toast.type === 'error' ? '⚠️' : '✓' }}</span>
         <span class="toast-message">{{ toast.message }}</span>
       </div>
     </transition-group>
@@ -39,14 +38,15 @@ const { toasts, removeToast } = useToast()
 .toast {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 14px 16px;
+  justify-content: center;
+  padding: 14px 20px;
   border-radius: 12px;
   font-size: 14px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   pointer-events: auto;
   cursor: pointer;
   backdrop-filter: blur(10px);
+  text-align: center;
 }
 
 .toast.error {
@@ -61,13 +61,7 @@ const { toasts, removeToast } = useToast()
   color: white;
 }
 
-.toast-icon {
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
 .toast-message {
-  flex: 1;
   font-weight: 500;
 }
 

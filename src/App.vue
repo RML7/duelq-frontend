@@ -26,7 +26,7 @@ onMounted(async () => {
   user.value = tg.initDataUnsafe?.user || null
 
   try {
-    const { data } = await authApi.login(tg.initData)
+    const data = await authApi.login(tg.initData)
     localStorage.setItem('token', data.token)
 
     // Проверить наличие активных дуэлей

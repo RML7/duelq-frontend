@@ -1,4 +1,4 @@
-import axios from 'axios'
+import axios, { AxiosError, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
 import { useToast } from '@/composables/useToast'
 
 const client = axios.create({
@@ -9,9 +9,9 @@ const client = axios.create({
 const { showError } = useToast()
 
 // Перед каждым запросом добавляем JWT токен
-client.interceptors.request.use((config) => {
+client.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = localStorage.getItem('token')
-  if (token) {
+  if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`
   }
   return config
@@ -19,8 +19,8 @@ client.interceptors.request.use((config) => {
 
 // Обработка ошибок
 client.interceptors.response.use(
-  (response) => response,
-  (error) => {
+  (response: AxiosResponse) => response,
+  (error: AxiosError<{ message?: string }>) => {
     // Если 401 — чистим токен
     if (error.response?.status === 401) {
       localStorage.removeItem('token')

@@ -1,4 +1,4 @@
-import { ref, onUnmounted } from 'vue'
+import { ref, onUnmounted, Ref } from 'vue'
 
 const WS_ENV_URL = import.meta.env.VITE_WS_URL
 const WS_URL = WS_ENV_URL
@@ -18,19 +18,26 @@ export const MessageType = {
   OPPONENT_ANSWERED: 'opponent_answered',
   ROUND_RESULT: 'round_result',
   GAME_FINISHED: 'game_finished',
+} as const
+
+export type MessageTypeValue = typeof MessageType[keyof typeof MessageType]
+
+export interface WebSocketMessage<T = any> {
+  type: MessageTypeValue
+  data?: T
 }
 
+type MessageHandler<T = any> = (data: T) => void
+
 export function useWebSocket() {
-  const ws = ref(null)
+  const ws: Ref<WebSocket | null> = ref(null)
   const connected = ref(false)
-  const messageHandlers = new Map()
+  const messageHandlers = new Map<MessageTypeValue, MessageHandler>()
 
   /**
    * Подключиться к WebSocket для дуэли
-   * @param {string} duelId - ID дуэли
-   * @param {string} token - JWT токен
    */
-  function connect(duelId, token) {
+  function connect(duelId: string, token: string): void {
     if (!WS_URL) {
       console.error('WebSocket URL is not configured')
       return
@@ -57,9 +64,9 @@ export function useWebSocket() {
       })
     }
 
-    ws.value.onmessage = (event) => {
+    ws.value.onmessage = (event: MessageEvent) => {
       try {
-        const message = JSON.parse(event.data)
+        const message: WebSocketMessage = JSON.parse(event.data)
         console.log('📩 Received message:', message)
 
         // Вызываем обработчик для этого типа сообщения
@@ -74,11 +81,11 @@ export function useWebSocket() {
       }
     }
 
-    ws.value.onerror = (error) => {
+    ws.value.onerror = (error: Event) => {
       console.error('❌ WebSocket error:', error)
     }
 
-    ws.value.onclose = (event) => {
+    ws.value.onclose = (event: CloseEvent) => {
       console.log('WebSocket closed:', event.code, event.reason)
       connected.value = false
       ws.value = null
@@ -92,9 +99,8 @@ export function useWebSocket() {
 
   /**
    * Отправить сообщение через WebSocket
-   * @param {Object} message - Сообщение с полями type и data
    */
-  function send(message) {
+  function send<T = any>(message: WebSocketMessage<T>): void {
     if (ws.value && ws.value.readyState === WebSocket.OPEN) {
       ws.value.send(JSON.stringify(message))
     } else {
@@ -104,25 +110,22 @@ export function useWebSocket() {
 
   /**
    * Зарегистрировать обработчик для типа сообщения
-   * @param {string} type - Тип сообщения
-   * @param {Function} handler - Функция-обработчик
    */
-  function onMessage(type, handler) {
+  function onMessage<T = any>(type: MessageTypeValue, handler: MessageHandler<T>): void {
     messageHandlers.set(type, handler)
   }
 
   /**
    * Удалить обработчик для типа сообщения
-   * @param {string} type - Тип сообщения
    */
-  function offMessage(type) {
+  function offMessage(type: MessageTypeValue): void {
     messageHandlers.delete(type)
   }
 
   /**
    * Закрыть WebSocket соединение
    */
-  function disconnect() {
+  function disconnect(): void {
     if (ws.value) {
       ws.value.close(1000, 'Client disconnect')
       ws.value = null
@@ -134,7 +137,7 @@ export function useWebSocket() {
   /**
    * Отправить ping (heartbeat)
    */
-  function ping() {
+  function ping(): void {
     send({ type: MessageType.PING })
   }
 

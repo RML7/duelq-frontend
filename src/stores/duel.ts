@@ -1,28 +1,29 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { duelsApi } from '@/api/duels'
+import type { DuelResponse } from '@/api/types'
 
 export const useDuelStore = defineStore('duel', () => {
   const showChallenge = ref(false)
   const showGame = ref(false)
-  const currentDuel = ref(null)
-  const activeDuel = ref(null) // Активная дуэль пользователя
+  const currentDuel = ref<DuelResponse | null>(null)
+  const activeDuel = ref<DuelResponse | null>(null)
 
-  function openChallenge() {
+  function openChallenge(): void {
     showChallenge.value = true
   }
 
-  function closeChallenge() {
+  function closeChallenge(): void {
     showChallenge.value = false
   }
 
-  function setGameReady(duel) {
+  function setGameReady(duel: DuelResponse): void {
     currentDuel.value = duel
     showChallenge.value = false
     showGame.value = true
   }
 
-  function closeGame() {
+  function closeGame(): void {
     showGame.value = false
     currentDuel.value = null
   }
@@ -30,9 +31,9 @@ export const useDuelStore = defineStore('duel', () => {
   /**
    * Проверить наличие активных дуэлей (pending, accepted, in_progress)
    */
-  async function checkActiveDuel() {
+  async function checkActiveDuel(): Promise<boolean> {
     try {
-      const { data } = await duelsApi.list({
+      const data = await duelsApi.list({
         page: { limit: 1, offset: 0 },
         status: ['pending', 'accepted', 'in_progress'],
       })
@@ -54,7 +55,7 @@ export const useDuelStore = defineStore('duel', () => {
   /**
    * Вернуться в активную дуэль
    */
-  function resumeActiveDuel() {
+  function resumeActiveDuel(): void {
     if (activeDuel.value) {
       setGameReady(activeDuel.value)
     }

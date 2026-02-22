@@ -18,6 +18,12 @@ import client from './client'
  * @property {DuelResponse} duel
  */
 
+/**
+ * @typedef {Object} ListDuelsResponse
+ * @property {DuelResponse[]} duels
+ * @property {number} count
+ */
+
 export const duelsApi = {
   /**
    * Создать новую дуэль
@@ -28,5 +34,16 @@ export const duelsApi = {
    */
   async create(payload) {
     return await client.post('/duels/', payload)
+  },
+
+  /**
+   * Получить список дуэлей пользователя
+   * @param {Object} payload
+   * @param {Object} payload.page - пагинация (limit, offset)
+   * @param {string[]} [payload.status] - фильтр по статусам
+   * @returns {Promise<{data: ListDuelsResponse}>}
+   */
+  async list(payload) {
+    return await client.post('/duels/list', payload)
   },
 }

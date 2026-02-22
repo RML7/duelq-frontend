@@ -10,6 +10,7 @@ import { useDuelStore } from '@/stores/duel'
 const user = ref(null)
 const loading = ref(true)
 const error = ref(null)
+const hasActiveDuel = ref(false)
 const duelStore = useDuelStore()
 
 onMounted(async () => {
@@ -27,6 +28,9 @@ onMounted(async () => {
   try {
     const { data } = await authApi.login(tg.initData)
     localStorage.setItem('token', data.token)
+
+    // Проверить наличие активных дуэлей
+    hasActiveDuel.value = await duelStore.checkActiveDuel()
   } catch (e) {
     error.value = e.message
   }
@@ -54,7 +58,21 @@ onMounted(async () => {
         <button class="add-btn">+</button>
       </div>
 
-      <button class="btn-play" @click="duelStore.openChallenge()">👊 Вызвать друга</button>
+      <button 
+        v-if="!hasActiveDuel"
+        class="btn-play" 
+        @click="duelStore.openChallenge()"
+      >
+        👊 Вызвать друга
+      </button>
+
+      <button 
+        v-else
+        class="btn-resume" 
+        @click="duelStore.resumeActiveDuel()"
+      >
+        🎮 Вернуться в дуэль
+      </button>
 
       <ChallengeModal v-if="duelStore.showChallenge" />
 
@@ -183,7 +201,8 @@ body {
   justify-content: center;
 }
 
-.btn-play {
+.btn-play,
+.btn-resume {
   background: linear-gradient(135deg, #6c5ce7, #5a4bd1);
   color: white;
   border: none;
@@ -196,6 +215,21 @@ body {
   max-width: 340px;
   margin-bottom: 32px;
   box-shadow: 0 4px 20px rgba(108, 92, 231, 0.3);
+}
+
+.btn-resume {
+  background: linear-gradient(135deg, #a29bfe, #6c5ce7);
+  box-shadow: 0 4px 20px rgba(108, 92, 231, 0.4);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    box-shadow: 0 4px 20px rgba(108, 92, 231, 0.4);
+  }
+  50% {
+    box-shadow: 0 4px 30px rgba(162, 155, 254, 0.6);
+  }
 }
 
 .stats {

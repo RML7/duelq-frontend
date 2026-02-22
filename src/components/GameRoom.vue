@@ -1,21 +1,53 @@
-<script setup>
-import { ref, onMounted } from 'vue'
+<script setup lang="ts">
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useWebSocket, MessageType } from '@/composables/useWebSocket'
 import { useDuelStore } from '@/stores/duel'
+import type { DuelResponse } from '@/api/types'
 
-const props = defineProps({
-  duel: {
-    type: Object,
-    required: true,
-  },
-})
+interface GameRoomProps {
+  duel: DuelResponse
+}
+
+interface AnswerOption {
+  id: number
+  text: string
+}
+
+interface QuestionState {
+  text: string
+  answers: AnswerOption[]
+  timeLeft: number
+  roundNumber: number
+  totalRounds: number
+}
+
+interface QuestionMessageData {
+  text: string
+  answers: AnswerOption[]
+  time_left: number
+  round_number: number
+  total_rounds: number
+}
+
+interface RoundResultData {
+  correct_answer_id?: number
+  your_answer_id?: number
+  scores?: Record<string, number>
+}
+
+interface GameFinishedData {
+  winner_id?: string
+  reason?: string
+}
+
+const props = defineProps<GameRoomProps>()
 
 const duelStore = useDuelStore()
 
-const { connected, onMessage } = useWebSocket()
+const { onMessage, offMessage } = useWebSocket()
 
 // Мок данные для вопроса (временно)
-const currentQuestion = ref({
+const currentQuestion = ref<QuestionState>({
   text: 'Какой язык программирования используется для разработки Android приложений?',
   answers: [
     { id: 1, text: 'Kotlin' },
@@ -28,38 +60,54 @@ const currentQuestion = ref({
   totalRounds: 5,
 })
 
-const selectedAnswer = ref(null)
-const answered = ref(false)
+const selectedAnswer = ref<number | null>(null)
+const answered = ref<boolean>(false)
 
 onMounted(() => {
   console.log('GameRoom mounted with duel:', props.duel)
-  
+
   // Здесь будут обработчики для игровых сообщений
   onMessage(MessageType.QUESTION, handleQuestion)
   onMessage(MessageType.ROUND_RESULT, handleRoundResult)
   onMessage(MessageType.GAME_FINISHED, handleGameFinished)
 })
 
-function handleQuestion(data) {
+onUnmounted(() => {
+  offMessage(MessageType.QUESTION)
+  offMessage(MessageType.ROUND_RESULT)
+  offMessage(MessageType.GAME_FINISHED)
+})
+
+function handleQuestion(data: QuestionMessageData): void {
   console.log('📝 New question:', data)
-  // TODO: Обновить currentQuestion данными с сервера
+
+  currentQuestion.value = {
+    text: data.text,
+    answers: data.answers,
+    timeLeft: data.time_left,
+    roundNumber: data.round_number,
+    totalRounds: data.total_rounds,
+  }
+  selectedAnswer.value = null
+  answered.value = false
 }
 
-function handleRoundResult(data) {
+function handleRoundResult(data: RoundResultData): void {
   console.log('📊 Round result:', data)
   // TODO: Показать результат раунда
 }
 
-function handleGameFinished(data) {
+function handleGameFinished(data: GameFinishedData): void {
   console.log('🏁 Game finished:', data)
   duelStore.closeGame()
 }
 
-function selectAnswer(answerId) {
+function selectAnswer(answerId: number): void {
   if (answered.value) return
+
   selectedAnswer.value = answerId
   answered.value = true
-  
+
   // TODO: Отправить ответ на сервер через WebSocket
   console.log('Selected answer:', answerId)
 }

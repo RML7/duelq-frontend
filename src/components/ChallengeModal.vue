@@ -1,19 +1,35 @@
-<script setup>
+<script setup lang="ts">
 import { ref, computed, onUnmounted } from 'vue'
 import { duelsApi } from '@/api/duels'
 import { useWebSocket, MessageType } from '@/composables/useWebSocket'
 import { useDuelStore } from '@/stores/duel'
+import type { DuelResponse, DuelCategory } from '@/api/types'
 
-const STAKES = [10, 25, 50, 100]
-const CATEGORIES = [
-  { label: 'Кино', value: 'cinema' },
+interface Category {
+  label: string
+  value: DuelCategory
+}
+
+type Step = 'setup' | 'loading' | 'waiting'
+
+interface GameReadyData {
+  duel: DuelResponse
+}
+
+interface TelegramWebAppWithShare {
+  openTelegramLink?: (url: string) => void
+}
+
+const STAKES = [10, 25, 50, 100] as const
+const CATEGORIES: Category[] = [
+  { label: 'Кино', value: 'general' },
 ]
 
-const step = ref('setup') // 'setup' | 'loading' | 'waiting'
-const stake = ref(25)
-const category = ref('cinema')
-const duel = ref(null)
-const timeRemaining = ref(300)
+const step = ref<Step>('setup')
+const stake = ref<number>(25)
+const category = ref<DuelCategory>('general')
+const duel = ref<DuelResponse | null>(null)
+const timeRemaining = ref<number>(300)
 const duelStore = useDuelStore()
 
 const DUEL_TIMEOUT_SECONDS = 300
@@ -26,21 +42,21 @@ const categoryLabel = computed(() => {
 const { connect, onMessage } = useWebSocket()
 
 // Таймер для отсчёта времени ожидания
-let timerInterval = null
+let timerInterval: number | null = null
 
-function startTimer() {
+function startTimer(): void {
   if (!duel.value?.created_at) return
 
   const createdTime = new Date(duel.value.created_at).getTime()
   
-  timerInterval = setInterval(() => {
+  timerInterval = window.setInterval(() => {
     const now = Date.now()
     const elapsed = Math.floor((now - createdTime) / 1000)
     const remaining = DUEL_TIMEOUT_SECONDS - elapsed
 
     if (remaining <= 0) {
       timeRemaining.value = 0
-      clearInterval(timerInterval)
+      if (timerInterval) clearInterval(timerInterval)
       // TODO: показать сообщение "Время истекло" и вернуть в setup
       step.value = 'setup'
     } else {
@@ -49,7 +65,7 @@ function startTimer() {
   }, 1000)
 }
 
-function stopTimer() {
+function stopTimer(): void {
   if (timerInterval) {
     clearInterval(timerInterval)
     timerInterval = null
@@ -60,18 +76,20 @@ onUnmounted(() => {
   stopTimer()
 })
 
-async function createDuel() {
+async function createDuel(): Promise<void> {
   step.value = 'loading'
 
   try {
-    const { data } = await duelsApi.create({ stake: stake.value, category: category.value })
+    const data = await duelsApi.create({ stake: stake.value, category: category.value })
     duel.value = data.duel
     step.value = 'waiting'
     startTimer()
     
     // Подключаемся к WebSocket
     const token = localStorage.getItem('token')
-    connect(duel.value.id, token)
+    if (token) {
+      connect(duel.value.id, token)
+    }
     
     // Подписываемся на сообщение game_ready
     onMessage(MessageType.GAME_READY, handleGameReady)
@@ -81,14 +99,15 @@ async function createDuel() {
   }
 }
 
-function handleGameReady(data) {
+function handleGameReady(data: GameReadyData): void {
   console.log('🎮 Game is ready!', data)
   duelStore.setGameReady(data.duel)
 }
 
-function shareLink() {
-  const tg = window.Telegram?.WebApp
-  if (tg && duel.value) {
+function shareLink(): void {
+  const tg = window.Telegram?.WebApp as TelegramWebAppWithShare | undefined
+
+  if (duel.value && tg?.openTelegramLink) {
     tg.openTelegramLink(
       `https://t.me/share/url?url=${encodeURIComponent(duel.value.invite_link)}&text=${encodeURIComponent('Принимай вызов! Сыграем в DuelQ? 🎯')}`
     )

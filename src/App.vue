@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { authApi } from '@/api/auth'
 import ChallengeModal from '@/components/ChallengeModal.vue'
@@ -6,11 +6,35 @@ import GameRoom from '@/components/GameRoom.vue'
 import Toast from '@/components/Toast.vue'
 import { useDuelStore } from '@/stores/duel'
 
-// ref — это функция из Vue, которая делает переменную реактивной. Это значит: когда значение меняется — шаблон автоматически перерисовывается.
-const user = ref(null)
-const loading = ref(true)
-const error = ref(null)
-const hasActiveDuel = ref(false)
+interface TelegramUser {
+  id: number
+  first_name: string
+  last_name?: string
+  username?: string
+  language_code?: string
+}
+
+interface TelegramWebApp {
+  initData: string
+  initDataUnsafe: {
+    user?: TelegramUser
+  }
+  ready: () => void
+  expand: () => void
+}
+
+declare global {
+  interface Window {
+    Telegram?: {
+      WebApp: TelegramWebApp
+    }
+  }
+}
+
+const user = ref<TelegramUser | null>(null)
+const loading = ref<boolean>(true)
+const error = ref<string | null>(null)
+const hasActiveDuel = ref<boolean>(false)
 const duelStore = useDuelStore()
 
 onMounted(async () => {
@@ -31,8 +55,8 @@ onMounted(async () => {
 
     // Проверить наличие активных дуэлей
     hasActiveDuel.value = await duelStore.checkActiveDuel()
-  } catch (e) {
-    error.value = e.message
+  } catch (e: any) {
+    error.value = e.message || 'Произошла ошибка'
   }
 
   loading.value = false

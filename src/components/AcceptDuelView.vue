@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { duelsApi } from '@/api/duels'
+import { useDuelStore } from '@/stores/duel'
 import { getCategoryLabel } from '@/types/categories'
 import type { DuelResponse } from '@/api/types'
 
@@ -13,6 +14,7 @@ const emit = defineEmits<{
   close: []
 }>()
 
+const duelStore = useDuelStore()
 const duel = ref<DuelResponse | null>(null)
 const loading = ref(true)
 
@@ -27,14 +29,24 @@ onMounted(async () => {
   }
 })
 
-function handleAccept() {
-  // TODO: реализовать принятие дуэли
-  console.log('Accept duel', props.duelId)
+async function handleAccept() {
+  try {
+    const response = await duelsApi.respond(props.duelId, 'accept')
+    duelStore.openGameRoom(response.duel)
+  } catch (e) {
+    console.error('Accept duel error:', e)
+    handleClose()
+  }
 }
 
-function handleCancel() {
-  // TODO: реализовать отклонение дуэли
-  console.log('Cancel duel', props.duelId)
+async function handleCancel() {
+  try {
+    await duelsApi.respond(props.duelId, 'cancel')
+    handleClose()
+  } catch (e) {
+    console.error('Cancel duel error:', e)
+    handleClose()
+  }
 }
 
 function handleClose() {

@@ -21,7 +21,6 @@ onMounted(async () => {
     duel.value = await duelsApi.getDuel(props.duelId)
   } catch (e) {
     console.error('getDuel error:', e)
-    // Закрываем модал, чтобы пользователь увидел основной экран и toast
     handleClose()
   } finally {
     loading.value = false

@@ -6,7 +6,6 @@ export const ACTIVE_DUEL_STATUSES = ['pending', 'accepted', 'in_progress'] as co
 // Базовые типы
 export interface DuelResponse {
   id: string
-  invite_token: string
   invite_link: string
   stake: number
   category: DuelCategory

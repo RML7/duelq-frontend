@@ -2,19 +2,12 @@
 import { ref } from 'vue'
 import { duelsApi } from '@/api/duels'
 import { useDuelStore } from '@/stores/duel'
+import { CATEGORIES } from '@/types/categories'
 import type { DuelCategory } from '@/api/types'
-
-interface Category {
-  label: string
-  value: DuelCategory
-}
 
 type Step = 'setup' | 'loading'
 
 const STAKES = [10, 25, 50, 100] as const
-const CATEGORIES: Category[] = [
-  { label: 'Кино', value: 'cinema' },
-]
 
 const step = ref<Step>('setup')
 const stake = ref<number>(25)

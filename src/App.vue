@@ -4,6 +4,7 @@ import { authApi } from '@/api/auth'
 import ChallengeModal from '@/components/ChallengeModal.vue'
 import GameRoom from '@/components/GameRoom.vue'
 import Toast from '@/components/Toast.vue'
+import AcceptDuelView from '@/components/AcceptDuelView.vue'
 import { useDuelStore } from '@/stores/duel'
 
 interface TelegramUser {
@@ -18,6 +19,7 @@ interface TelegramWebApp {
   initData: string
   initDataUnsafe: {
     user?: TelegramUser
+    start_param?: string
   }
   ready: () => void
   expand: () => void
@@ -35,7 +37,8 @@ const user = ref<TelegramUser | null>(null)
 const loading = ref<boolean>(true)
 const error = ref<string | null>(null)
 const duelStore = useDuelStore()
-const hasActiveDuel = computed(() => Boolean(duelStore.activeDuel))
+const inviteDuelId = ref<string | null>(null)
+const showAcceptDuel = ref<boolean>(false)
 
 onMounted(async () => {
   const tg = window.Telegram?.WebApp
@@ -49,12 +52,25 @@ onMounted(async () => {
   tg.expand()
   user.value = tg.initDataUnsafe?.user || null
 
+  // Извлечь duel_id из startapp параметра
+  const startParam = tg.initDataUnsafe?.start_param
+  console.log('Telegram start_param:', startParam)
+  if (startParam) {
+    inviteDuelId.value = startParam
+    console.log('inviteDuelId set to:', inviteDuelId.value)
+  }
+
   try {
     const data = await authApi.login(tg.initData)
     localStorage.setItem('token', data.token)
 
-    // Проверить наличие активных дуэлей
-    await duelStore.checkActiveDuel()
+    // Если есть invite, показать экран принятия дуэли
+    if (inviteDuelId.value) {
+      showAcceptDuel.value = true
+    } else {
+      // Иначе проверить наличие активных дуэлей
+      await duelStore.checkActiveDuel()
+    }
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'Произошла ошибка'
   }
@@ -67,10 +83,24 @@ function resumeDuel(): void {
     duelStore.openGameRoom(duelStore.activeDuel)
   }
 }
+
+function closeAcceptDuel(): void {
+  showAcceptDuel.value = false
+  // После закрытия проверить активные дуэли
+  duelStore.checkActiveDuel()
+}
 </script>
 
 <template>
   <Toast />
+  
+  <!-- Экран принятия дуэли по приглашению -->
+  <AcceptDuelView 
+    v-if="showAcceptDuel && inviteDuelId" 
+    :duel-id="inviteDuelId"
+    @close="closeAcceptDuel"
+  />
+
   <div class="app">
     <div v-if="loading" class="loading">Загрузка...</div>
 
@@ -88,7 +118,7 @@ function resumeDuel(): void {
       </div>
 
       <button 
-        v-if="!hasActiveDuel"
+        v-if="!duelStore.activeDuel"
         class="btn-play" 
         @click="duelStore.openChallenge()"
       >

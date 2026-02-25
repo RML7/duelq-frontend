@@ -16,14 +16,12 @@ interface GameReadyData {
   duel: DuelResponse
 }
 
-interface AnswerOption {
-  id: number
-  text: string
-}
-
 interface QuestionState {
   text: string
-  answers: AnswerOption[]
+  optionA: string
+  optionB: string
+  optionC: string
+  optionD: string
   timeLeft: number
   roundNumber: number
   totalRounds: number
@@ -31,10 +29,15 @@ interface QuestionState {
 
 interface QuestionMessageData {
   text: string
-  answers: AnswerOption[]
-  time_left: number
-  round_number: number
-  total_rounds: number
+  option_a: string
+  option_b: string
+  option_c: string
+  option_d: string
+  timeout_sec: number
+  round: number
+  server_time: number      // Текущее время сервера (Unix milliseconds UTC)
+  round_starts_at: number  // Время старта раунда (Unix milliseconds UTC)
+  round_deadline: number   // Время окончания раунда (Unix milliseconds UTC)
 }
 
 interface RoundResultData {
@@ -44,31 +47,38 @@ interface RoundResultData {
 }
 
 interface GameFinishedData {
-  winner_id?: string
-  reason?: string
+  creator_rounds_won: number
+  opponent_rounds_won: number
+  winner: 'creator' | 'opponent' | 'draw'
 }
 
-type RoomStep = 'waiting' | 'syncing' | 'playing'
+type RoomStep = 'waiting' | 'syncing' | 'round_starting' | 'playing' | 'finished'
 
 const DUEL_TIMEOUT_SECONDS = 300
 
 const props = defineProps<GameRoomProps>()
 const duelStore = useDuelStore()
-const { connect, disconnect, onMessage, offMessage } = useWebSocket()
+const { connect, disconnect, onMessage, offMessage, send } = useWebSocket()
 
 const duel = ref<DuelResponse>(props.duel)
 const step = ref<RoomStep>(duel.value.status === 'pending' ? 'waiting' : 'syncing')
 const timeRemaining = ref<number>(DUEL_TIMEOUT_SECONDS)
 const currentQuestion = ref<QuestionState | null>(null)
-const selectedAnswer = ref<number | null>(null)
+const selectedAnswer = ref<string | null>(null)
 const answered = ref<boolean>(false)
+const roundResult = ref<RoundResultData | null>(null)
+const gameResult = ref<GameFinishedData | null>(null)
+const countdownToStart = ref<number>(0) // Обратный отсчет до старта раунда
 
 const categoryLabel = computed(() => {
-  if (duel.value.category === 'cinema') return 'Кино'
-  return duel.value.category
+  if (duel.value?.category === 'cinema') return 'Кино'
+  return duel.value?.category || ''
 })
 
 let waitingTimer: number | null = null
+let questionTimer: number | null = null
+let startDelayTimeout: number | null = null
+let countdownInterval: number | null = null
 
 onMounted(() => {
   onMessage(MessageType.GAME_READY, handleGameReady)
@@ -84,12 +94,18 @@ onMounted(() => {
   }
 
   if (step.value === 'waiting') {
-    startTimer()
+    startWaitingTimer()
   }
 })
 
 onUnmounted(() => {
-  stopTimer()
+  stopWaitingTimer()
+  stopQuestionTimer()
+  stopCountdown()
+  if (startDelayTimeout) {
+    clearTimeout(startDelayTimeout)
+    startDelayTimeout = null
+  }
   offMessage(MessageType.GAME_READY)
   offMessage(MessageType.QUESTION)
   offMessage(MessageType.ROUND_RESULT)
@@ -97,11 +113,14 @@ onUnmounted(() => {
   disconnect()
 })
 
-function startTimer(): void {
-  if (step.value !== 'waiting' || !duel.value.created_at) return
+function startWaitingTimer(): void {
+  if (step.value !== 'waiting' || !duel.value?.created_at) return
 
   function updateWaitingTime(): void {
-    if (!duel.value.created_at) return
+    if (!duel.value?.created_at) {
+      stopWaitingTimer()
+      return
+    }
 
     const createdTime = new Date(duel.value.created_at).getTime()
     const now = Date.now()
@@ -110,7 +129,7 @@ function startTimer(): void {
 
     if (remaining <= 0) {
       timeRemaining.value = 0
-      stopTimer()
+      stopWaitingTimer()
       duelStore.finishDuel()
       return
     }
@@ -125,11 +144,63 @@ function startTimer(): void {
   }, 1000)
 }
 
-function stopTimer(): void {
+function stopWaitingTimer(): void {
   if (waitingTimer) {
     clearInterval(waitingTimer)
     waitingTimer = null
   }
+}
+
+function startQuestionTimer(durationMs: number): void {
+  stopQuestionTimer()
+
+  const endTime = Date.now() + durationMs
+
+  questionTimer = window.setInterval(() => {
+    if (!currentQuestion.value) return
+
+    const remaining = Math.max(0, endTime - Date.now())
+    currentQuestion.value.timeLeft = Math.ceil(remaining / 1000) // Показываем секунды
+
+    if (remaining <= 0) {
+      stopQuestionTimer()
+      // Если время вышло и игрок не ответил, можно отправить пустой ответ или ничего не делать
+    }
+  }, 50) // Обновляем каждые 50ms для плавности
+}
+
+function stopQuestionTimer(): void {
+  if (questionTimer) {
+    clearInterval(questionTimer)
+    questionTimer = null
+  }
+  if (startDelayTimeout) {
+    clearTimeout(startDelayTimeout)
+    startDelayTimeout = null
+  }
+}
+
+function startCountdown(delayMs: number): void {
+  stopCountdown()
+  
+  const endTime = Date.now() + delayMs
+  
+  countdownInterval = window.setInterval(() => {
+    const remaining = Math.max(0, endTime - Date.now())
+    countdownToStart.value = Math.ceil(remaining / 1000)
+    
+    if (remaining <= 0) {
+      stopCountdown()
+    }
+  }, 50)
+}
+
+function stopCountdown(): void {
+  if (countdownInterval) {
+    clearInterval(countdownInterval)
+    countdownInterval = null
+  }
+  countdownToStart.value = 0
 }
 
 function closeRoom(): void {
@@ -149,44 +220,103 @@ function handleGameReady(data: GameReadyData): void {
   console.log('🎮 Game is ready!', data)
   duel.value = data.duel
   duelStore.updateActiveDuel(data.duel)
-  stopTimer()
+  stopWaitingTimer()
   step.value = 'syncing'
 }
 
 function handleQuestion(data: QuestionMessageData): void {
   console.log('📝 New question:', data)
 
+  // 1. Вычисляем clock offset между клиентом и сервером
+  const clockOffset = data.server_time - Date.now()
+  console.log('⏰ Clock offset:', clockOffset, 'ms')
+
+  // 2. Корректируем время старта раунда под клиентские часы
+  const roundStartsAtClient = data.round_starts_at - clockOffset
+  const delayUntilStart = roundStartsAtClient - Date.now()
+  console.log('⏱️ Delay until start:', delayUntilStart, 'ms')
+
+  // Сохраняем вопрос (но не показываем его пока)
   currentQuestion.value = {
     text: data.text,
-    answers: data.answers,
-    timeLeft: data.time_left,
-    roundNumber: data.round_number,
-    totalRounds: data.total_rounds,
+    optionA: data.option_a,
+    optionB: data.option_b,
+    optionC: data.option_c,
+    optionD: data.option_d,
+    timeLeft: data.timeout_sec,
+    roundNumber: data.round,
+    totalRounds: 7, // DUEL_QUESTIONS_COUNT
   }
   selectedAnswer.value = null
   answered.value = false
-  step.value = 'playing'
+  roundResult.value = null
+
+  // 3. Подождать до старта раунда, потом показать вопрос и запустить таймер
+  if (delayUntilStart > 0) {
+    // Нормальный случай: показываем экран ожидания с обратным отсчетом
+    console.log('⏳ Waiting', delayUntilStart, 'ms before starting round')
+    step.value = 'round_starting'
+    startCountdown(delayUntilStart)
+    
+    startDelayTimeout = window.setTimeout(() => {
+      console.log('🚀 Starting round now!')
+      step.value = 'playing'
+      stopCountdown()
+      startQuestionTimer(data.timeout_sec * 1000)
+    }, delayUntilStart)
+  } else {
+    // Опоздали: показываем вопрос сразу с уменьшенным таймером
+    const remainingTime = data.timeout_sec * 1000 + delayUntilStart
+    console.log('⚡ Starting immediately with remaining time:', remainingTime, 'ms')
+    step.value = 'playing'
+    startQuestionTimer(Math.max(0, remainingTime))
+  }
 }
 
 function handleRoundResult(data: RoundResultData): void {
   console.log('📊 Round result:', data)
-  // TODO: Показать результат раунда
+  stopQuestionTimer()
+  roundResult.value = data
+  // Не меняем step - просто ждем следующий question от сервера
+  // Сервер сам управляет таймингом через round_starts_at
 }
 
 function handleGameFinished(data: GameFinishedData): void {
   console.log('🏁 Game finished:', data)
-  stopTimer()
-  duelStore.finishDuel()
+  stopQuestionTimer()
+  stopWaitingTimer()
+  stopCountdown()
+  gameResult.value = data
+  step.value = 'finished'
+  console.log('✅ Step changed to finished, gameResult:', gameResult.value)
 }
 
-function selectAnswer(answerId: number): void {
-  if (answered.value) return
+function selectAnswer(answerLetter: string): void {
+  if (answered.value) {
+    console.log('⚠️ Already answered, ignoring click')
+    return
+  }
 
-  selectedAnswer.value = answerId
+  console.log('👆 User clicked answer:', answerLetter)
+  
+  selectedAnswer.value = answerLetter
   answered.value = true
 
-  // TODO: Отправить ответ на сервер через WebSocket
-  console.log('Selected answer:', answerId)
+  console.log('📤 Sending answer to server:', answerLetter)
+  
+  // Отправляем ответ на сервер
+  send({
+    type: MessageType.ANSWER,
+    data: {
+      answer: answerLetter
+    }
+  })
+
+  console.log('✅ Answer sent successfully:', answerLetter)
+}
+
+function finishGame(): void {
+  duelStore.finishDuel()
 }
 </script>
 
@@ -196,10 +326,13 @@ function selectAnswer(answerId: number): void {
       <div class="sheet-header">
         <span class="sheet-title" v-if="step === 'waiting'">Ожидание оппонента</span>
         <span class="sheet-title" v-else-if="step === 'syncing'">Дуэль начинается</span>
-        <span class="sheet-title" v-else>Раунд {{ currentQuestion?.roundNumber }}/{{ currentQuestion?.totalRounds }}</span>
+        <span class="sheet-title" v-else-if="step === 'round_starting'">Раунд {{ currentQuestion?.roundNumber }}/{{ currentQuestion?.totalRounds }}</span>
+        <span class="sheet-title" v-else-if="step === 'playing'">Раунд {{ currentQuestion?.roundNumber }}/{{ currentQuestion?.totalRounds }}</span>
+        <span class="sheet-title" v-else-if="step === 'finished'">Игра окончена</span>
         <button class="close-btn" @click="closeRoom">✕</button>
       </div>
 
+      <!-- Ожидание оппонента -->
       <template v-if="step === 'waiting'">
         <div class="waiting-card">
           <div class="timer-display">{{ timeRemaining }}</div>
@@ -222,14 +355,27 @@ function selectAnswer(answerId: number): void {
         <button class="btn-primary" @click="shareLink">📤 Выбрать оппонента</button>
       </template>
 
+      <!-- Синхронизация / ожидание вопроса -->
       <template v-else-if="step === 'syncing'">
         <div class="loading-block">
           <div class="spinner"></div>
-          <p>Оппонент найден. Ждём первый вопрос…</p>
+          <p>Оппонент найден. Ждём следующий вопрос…</p>
         </div>
       </template>
 
-      <template v-else-if="currentQuestion">
+      <!-- Обратный отсчет до старта раунда -->
+      <template v-else-if="step === 'round_starting'">
+        <div class="countdown-block">
+          <div class="countdown-circle">
+            <div class="countdown-number">{{ countdownToStart }}</div>
+          </div>
+          <div class="countdown-text">Раунд начнется через</div>
+          <div class="countdown-subtext">Приготовьтесь!</div>
+        </div>
+      </template>
+
+      <!-- Игровой раунд с вопросом -->
+      <template v-else-if="step === 'playing' && currentQuestion">
         <div class="round-info">
           <span class="round-text">Раунд {{ currentQuestion.roundNumber }}/{{ currentQuestion.totalRounds }}</span>
           <div class="timer"><span class="timer-value">{{ currentQuestion.timeLeft }}s</span></div>
@@ -239,15 +385,93 @@ function selectAnswer(answerId: number): void {
 
         <div class="answers-grid">
           <button
-            v-for="answer in currentQuestion.answers"
-            :key="answer.id"
             class="answer-btn"
-            :class="{ selected: selectedAnswer === answer.id, disabled: answered && selectedAnswer !== answer.id }"
-            @click="selectAnswer(answer.id)"
+            :class="{ 
+              selected: selectedAnswer === 'A', 
+              disabled: answered && selectedAnswer !== 'A' 
+            }"
+            @click="selectAnswer('A')"
           >
-            <span class="answer-letter">{{ String.fromCharCode(64 + answer.id) }}</span>
-            <span class="answer-text">{{ answer.text }}</span>
+            <span class="answer-letter">A</span>
+            <span class="answer-text">{{ currentQuestion.optionA }}</span>
           </button>
+
+          <button
+            class="answer-btn"
+            :class="{ 
+              selected: selectedAnswer === 'B', 
+              disabled: answered && selectedAnswer !== 'B' 
+            }"
+            @click="selectAnswer('B')"
+          >
+            <span class="answer-letter">B</span>
+            <span class="answer-text">{{ currentQuestion.optionB }}</span>
+          </button>
+
+          <button
+            class="answer-btn"
+            :class="{ 
+              selected: selectedAnswer === 'C', 
+              disabled: answered && selectedAnswer !== 'C' 
+            }"
+            @click="selectAnswer('C')"
+          >
+            <span class="answer-letter">C</span>
+            <span class="answer-text">{{ currentQuestion.optionC }}</span>
+          </button>
+
+          <button
+            class="answer-btn"
+            :class="{ 
+              selected: selectedAnswer === 'D', 
+              disabled: answered && selectedAnswer !== 'D' 
+            }"
+            @click="selectAnswer('D')"
+          >
+            <span class="answer-letter">D</span>
+            <span class="answer-text">{{ currentQuestion.optionD }}</span>
+          </button>
+        </div>
+      </template>
+
+      <!-- Финальные результаты -->
+      <template v-else-if="step === 'finished' && gameResult">
+        <div class="final-card">
+          <!-- Результат игры -->
+          <div class="final-result-simple">
+            <div class="result-icon">🏁</div>
+            <div class="result-title">Игра завершена</div>
+          </div>
+
+          <!-- Счет -->
+          <div class="score-display">
+            <div class="score-item">
+              <div class="score-label">Игрок 1</div>
+              <div class="score-value">{{ gameResult.creator_rounds_won }}</div>
+            </div>
+            <div class="score-divider">:</div>
+            <div class="score-item">
+              <div class="score-label">Игрок 2</div>
+              <div class="score-value">{{ gameResult.opponent_rounds_won }}</div>
+            </div>
+          </div>
+
+          <!-- Статистика по раундам (заготовка) -->
+          <div class="rounds-stats">
+            <div class="rounds-title">Статистика раундов</div>
+            <div class="rounds-subtitle">Детальная статистика будет добавлена с бэкенда</div>
+            
+            <!-- Временная заглушка - тут будет список раундов -->
+            <div class="rounds-placeholder">
+              <div class="placeholder-icon">📊</div>
+              <div class="placeholder-text">Ждем данные с сервера...</div>
+            </div>
+          </div>
+
+          <!-- Кнопки -->
+          <div class="final-actions">
+            <button class="btn-primary" @click="finishGame">Закрыть</button>
+          </div>
         </div>
       </template>
     </div>
@@ -409,6 +633,57 @@ function selectAnswer(answerId: number): void {
   to { transform: rotate(360deg) }
 }
 
+.countdown-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 60px 0;
+}
+
+.countdown-circle {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(108, 92, 231, 0.2), rgba(162, 155, 254, 0.1));
+  border: 3px solid #6c5ce7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 30px rgba(108, 92, 231, 0.4);
+  animation: pulse-glow 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 30px rgba(108, 92, 231, 0.4);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 50px rgba(108, 92, 231, 0.6);
+    transform: scale(1.05);
+  }
+}
+
+.countdown-number {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 56px;
+  font-weight: 700;
+  color: #6c5ce7;
+  line-height: 1;
+}
+
+.countdown-text {
+  font-size: 18px;
+  font-weight: 600;
+  color: #f0f0f5;
+}
+
+.countdown-subtext {
+  font-size: 14px;
+  color: #8888a0;
+}
+
 .round-info {
   display: flex;
   justify-content: space-between;
@@ -467,10 +742,8 @@ function selectAnswer(answerId: number): void {
   text-align: left;
 }
 
-.answer-btn:hover:not(.disabled) {
+.answer-btn:hover:not(.disabled):not(.selected) {
   background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(108, 92, 231, 0.5);
-  transform: translateY(-2px);
 }
 
 .answer-btn.selected {
@@ -507,5 +780,127 @@ function selectAnswer(answerId: number): void {
   font-size: 15px;
   color: #f0f0f5;
   line-height: 1.4;
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scale(0);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.final-card {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  padding: 40px 20px;
+}
+
+.final-result-simple {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 32px 24px;
+  background: rgba(108, 92, 231, 0.1);
+  border: 2px solid rgba(108, 92, 231, 0.3);
+  border-radius: 16px;
+  animation: scaleIn 0.4s ease;
+}
+
+.result-icon {
+  font-size: 64px;
+  line-height: 1;
+}
+
+.result-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #f0f0f5;
+}
+
+.score-display {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+}
+
+.score-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.score-label {
+  font-size: 13px;
+  color: #8888a0;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.score-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 48px;
+  font-weight: 700;
+  color: #6c5ce7;
+  line-height: 1;
+}
+
+.score-divider {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 48px;
+  font-weight: 700;
+  color: #44445a;
+  line-height: 1;
+}
+
+.rounds-stats {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 16px;
+  padding: 20px;
+}
+
+.rounds-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #f0f0f5;
+  margin-bottom: 4px;
+}
+
+.rounds-subtitle {
+  font-size: 12px;
+  color: #8888a0;
+  margin-bottom: 16px;
+}
+
+.rounds-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 40px 20px;
+}
+
+.placeholder-icon {
+  font-size: 48px;
+  opacity: 0.5;
+}
+
+.placeholder-text {
+  font-size: 14px;
+  color: #8888a0;
+}
+
+.final-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 </style>

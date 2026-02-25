@@ -11,11 +11,9 @@ export const MessageType = {
   PING: 'ping',
   PONG: 'pong',
   ERROR: 'error',
-  OPPONENT_JOINED: 'opponent_joined',
   GAME_READY: 'game_ready',
   QUESTION: 'question',
   ANSWER: 'answer',
-  OPPONENT_ANSWERED: 'opponent_answered',
   ROUND_RESULT: 'round_result',
   GAME_FINISHED: 'game_finished',
 } as const

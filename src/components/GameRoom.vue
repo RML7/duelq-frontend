@@ -46,10 +46,22 @@ interface RoundResultData {
   scores?: Record<string, number>
 }
 
-interface GameFinishedData {
-  creator_rounds_won: number
-  opponent_rounds_won: number
+interface RoundResult {
+  round: number
+  creator_correct: boolean
+  opponent_correct: boolean
+  creator_response_time_ms: number | null
+  opponent_response_time_ms: number | null
   winner: 'creator' | 'opponent' | 'draw'
+}
+
+interface GameFinishedData {
+  creator_id: string
+  opponent_id: string
+  creator_name: string
+  opponent_name: string
+  winner: 'creator' | 'opponent' | 'draw'
+  rounds: RoundResult[]
 }
 
 type RoomStep = 'waiting' | 'syncing' | 'round_starting' | 'playing' | 'finished'
@@ -73,6 +85,49 @@ const countdownToStart = ref<number>(0) // Обратный отсчет до с
 const categoryLabel = computed(() => {
   if (duel.value?.category === 'cinema') return 'Кино'
   return duel.value?.category || ''
+})
+
+// Определяем порядок отображения: Я первый, оппонент второй
+const firstPlayerName = computed(() => {
+  if (!gameResult.value) return 'Игрок 1'
+  const userId = localStorage.getItem('user_id')
+  if (gameResult.value.creator_id === userId) {
+    return gameResult.value.creator_name
+  } else {
+    return gameResult.value.opponent_name
+  }
+})
+
+const secondPlayerName = computed(() => {
+  if (!gameResult.value) return 'Игрок 2'
+  const userId = localStorage.getItem('user_id')
+  if (gameResult.value.creator_id === userId) {
+    return gameResult.value.opponent_name
+  } else {
+    return gameResult.value.creator_name
+  }
+})
+
+const iAmCreator = computed(() => {
+  if (!gameResult.value) return false
+  const userId = localStorage.getItem('user_id')
+  return gameResult.value.creator_id === userId
+})
+
+const iAmWinner = computed(() => {
+  if (!gameResult.value) return false
+  const userId = localStorage.getItem('user_id')
+  if (gameResult.value.winner === 'draw') return false
+  
+  if (gameResult.value.creator_id === userId) {
+    return gameResult.value.winner === 'creator'
+  } else {
+    return gameResult.value.winner === 'opponent'
+  }
+})
+
+const isDraw = computed(() => {
+  return gameResult.value?.winner === 'draw'
 })
 
 let waitingTimer: number | null = null
@@ -326,8 +381,8 @@ function finishGame(): void {
       <div class="sheet-header">
         <span class="sheet-title" v-if="step === 'waiting'">Ожидание оппонента</span>
         <span class="sheet-title" v-else-if="step === 'syncing'">Дуэль начинается</span>
-        <span class="sheet-title" v-else-if="step === 'round_starting'">Раунд {{ currentQuestion?.roundNumber }}/{{ currentQuestion?.totalRounds }}</span>
-        <span class="sheet-title" v-else-if="step === 'playing'">Раунд {{ currentQuestion?.roundNumber }}/{{ currentQuestion?.totalRounds }}</span>
+        <span class="sheet-title" v-else-if="step === 'round_starting'">Готовьтесь...</span>
+        <span class="sheet-title" v-else-if="step === 'playing'">Вопрос</span>
         <span class="sheet-title" v-else-if="step === 'finished'">Игра окончена</span>
         <button class="close-btn" @click="closeRoom">✕</button>
       </div>
@@ -437,34 +492,69 @@ function finishGame(): void {
       <!-- Финальные результаты -->
       <template v-else-if="step === 'finished' && gameResult">
         <div class="final-card">
-          <!-- Результат игры -->
-          <div class="final-result-simple">
-            <div class="result-icon">🏁</div>
-            <div class="result-title">Игра завершена</div>
+          <!-- Результат игры: Победа/Поражение/Ничья -->
+          <div class="game-result" :class="{ win: iAmWinner, lose: !iAmWinner && !isDraw, draw: isDraw }">
+            <div class="result-text">{{ isDraw ? 'Ничья' : (iAmWinner ? 'Победа' : 'Поражение') }}</div>
           </div>
 
-          <!-- Счет -->
-          <div class="score-display">
-            <div class="score-item">
-              <div class="score-label">Игрок 1</div>
-              <div class="score-value">{{ gameResult.creator_rounds_won }}</div>
-            </div>
-            <div class="score-divider">:</div>
-            <div class="score-item">
-              <div class="score-label">Игрок 2</div>
-              <div class="score-value">{{ gameResult.opponent_rounds_won }}</div>
-            </div>
-          </div>
-
-          <!-- Статистика по раундам (заготовка) -->
+          <!-- Статистика по раундам -->
           <div class="rounds-stats">
             <div class="rounds-title">Статистика раундов</div>
-            <div class="rounds-subtitle">Детальная статистика будет добавлена с бэкенда</div>
             
-            <!-- Временная заглушка - тут будет список раундов -->
-            <div class="rounds-placeholder">
-              <div class="placeholder-icon">📊</div>
-              <div class="placeholder-text">Ждем данные с сервера...</div>
+            <div class="rounds-table">
+              <div class="table-header">
+                <div class="table-cell round-col">#</div>
+                <div class="table-cell result-col">{{ firstPlayerName }}</div>
+                <div class="table-cell result-col">{{ secondPlayerName }}</div>
+              </div>
+              
+              <div 
+                v-for="round in gameResult.rounds" 
+                :key="round.round"
+                class="table-row"
+              >
+                <div class="table-cell round-col">{{ round.round }}</div>
+                
+                <!-- Первый игрок (Я) -->
+                <div class="table-cell result-col">
+                  <div class="result-content">
+                    <div class="result-row">
+                      <span class="result-icon" :class="{ 
+                        correct: iAmCreator ? round.creator_correct : round.opponent_correct, 
+                        wrong: iAmCreator ? !round.creator_correct : !round.opponent_correct 
+                      }">
+                        {{ (iAmCreator ? round.creator_correct : round.opponent_correct) ? '✓' : '✗' }}
+                      </span>
+                      <span class="crown" v-if="(iAmCreator && round.winner === 'creator') || (!iAmCreator && round.winner === 'opponent')">👑</span>
+                    </div>
+                    <span class="response-time">
+                      {{ (iAmCreator ? round.creator_response_time_ms : round.opponent_response_time_ms) !== null 
+                        ? `${iAmCreator ? round.creator_response_time_ms : round.opponent_response_time_ms}ms` 
+                        : '-' }}
+                    </span>
+                  </div>
+                </div>
+                
+                <!-- Второй игрок (Оппонент) -->
+                <div class="table-cell result-col">
+                  <div class="result-content">
+                    <div class="result-row">
+                      <span class="result-icon" :class="{ 
+                        correct: iAmCreator ? round.opponent_correct : round.creator_correct, 
+                        wrong: iAmCreator ? !round.opponent_correct : !round.creator_correct 
+                      }">
+                        {{ (iAmCreator ? round.opponent_correct : round.creator_correct) ? '✓' : '✗' }}
+                      </span>
+                      <span class="crown" v-if="(iAmCreator && round.winner === 'opponent') || (!iAmCreator && round.winner === 'creator')">👑</span>
+                    </div>
+                    <span class="response-time">
+                      {{ (iAmCreator ? round.opponent_response_time_ms : round.creator_response_time_ms) !== null 
+                        ? `${iAmCreator ? round.opponent_response_time_ms : round.creator_response_time_ms}ms` 
+                        : '-' }}
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -498,18 +588,21 @@ function finishGame(): void {
 .game-container {
   width: 100%;
   max-width: 500px;
-  padding: 32px 20px;
+  max-height: calc(100vh - 40px);
+  padding: 20px 16px;
   margin: 20px;
   background: #12121a;
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 24px;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .sheet-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 
 .sheet-title {
@@ -796,57 +889,88 @@ function finishGame(): void {
 .final-card {
   display: flex;
   flex-direction: column;
-  gap: 32px;
-  padding: 40px 20px;
+  gap: 16px;
+  padding: 0;
 }
 
-.final-result-simple {
+.game-result {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
-  padding: 32px 24px;
-  background: rgba(108, 92, 231, 0.1);
-  border: 2px solid rgba(108, 92, 231, 0.3);
-  border-radius: 16px;
+  gap: 8px;
+  padding: 20px;
+  border-radius: 12px;
   animation: scaleIn 0.4s ease;
 }
 
-.result-icon {
-  font-size: 64px;
+.game-result.win {
+  background: rgba(46, 213, 115, 0.15);
+  border: 2px solid #2ed573;
+}
+
+.game-result.lose {
+  background: rgba(255, 71, 87, 0.15);
+  border: 2px solid #ff4757;
+}
+
+.game-result.draw {
+  background: rgba(255, 184, 0, 0.15);
+  border: 2px solid #ffb800;
+}
+
+.result-text {
+  font-size: 24px;
+  font-weight: 700;
   line-height: 1;
 }
 
-.result-title {
-  font-size: 24px;
+.game-result.win .result-text {
+  color: #2ed573;
+}
+
+.game-result.lose .result-text {
+  color: #ff4757;
+}
+
+.game-result.draw .result-text {
+  color: #ffb800;
+}
+
+.result-score {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 20px;
   font-weight: 700;
-  color: #f0f0f5;
+  color: #8888a0;
 }
 
 .score-display {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 24px;
+  gap: 16px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
 }
 
 .score-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
 }
 
 .score-label {
-  font-size: 13px;
+  font-size: 11px;
   color: #8888a0;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 0.5px;
 }
 
 .score-value {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 48px;
+  font-size: 32px;
   font-weight: 700;
   color: #6c5ce7;
   line-height: 1;
@@ -854,7 +978,7 @@ function finishGame(): void {
 
 .score-divider {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 48px;
+  font-size: 32px;
   font-weight: 700;
   color: #44445a;
   line-height: 1;
@@ -863,38 +987,111 @@ function finishGame(): void {
 .rounds-stats {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 16px;
-  padding: 20px;
+  border-radius: 12px;
+  padding: 16px;
+  flex: 1;
 }
 
 .rounds-title {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 700;
   color: #f0f0f5;
+  margin-bottom: 12px;
+}
+
+.rounds-table {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.table-header {
+  display: grid;
+  grid-template-columns: 32px 1fr 1fr;
+  gap: 8px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
   margin-bottom: 4px;
 }
 
-.rounds-subtitle {
-  font-size: 12px;
-  color: #8888a0;
-  margin-bottom: 16px;
+.table-row {
+  display: grid;
+  grid-template-columns: 32px 1fr 1fr;
+  gap: 8px;
+  padding: 10px 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  transition: background 0.2s ease;
 }
 
-.rounds-placeholder {
+.table-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.table-cell {
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+}
+
+.round-col {
+  justify-content: center;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  color: #8888a0;
+}
+
+.result-col {
+  justify-content: center;
+}
+
+.result-content {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
-  padding: 40px 20px;
+  gap: 4px;
 }
 
-.placeholder-icon {
-  font-size: 48px;
-  opacity: 0.5;
+.result-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
-.placeholder-text {
+.crown {
+  font-size: 12px;
+  animation: crownPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes crownPulse {
+  0%, 100% { 
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% { 
+    transform: scale(1.2);
+    opacity: 0.8;
+  }
+}
+
+.result-icon {
   font-size: 14px;
+  font-weight: 700;
+}
+
+.result-icon.correct {
+  color: #2ed573;
+}
+
+.result-icon.wrong {
+  color: #ff4757;
+}
+
+.response-time {
+  font-size: 10px;
+  font-family: 'JetBrains Mono', monospace;
   color: #8888a0;
 }
 

@@ -5,6 +5,7 @@ import ChallengeModal from '@/components/ChallengeModal.vue'
 import GameRoom from '@/components/GameRoom.vue'
 import Toast from '@/components/Toast.vue'
 import AcceptDuelView from '@/components/AcceptDuelView.vue'
+import RulesModal from '@/components/RulesModal.vue'
 import { useDuelStore } from '@/stores/duel'
 
 interface TelegramUser {
@@ -39,6 +40,7 @@ const error = ref<string | null>(null)
 const duelStore = useDuelStore()
 const inviteDuelId = ref<string | null>(null)
 const showAcceptDuel = ref<boolean>(false)
+const showRules = ref<boolean>(false)
 
 onMounted(async () => {
   const tg = window.Telegram?.WebApp
@@ -63,6 +65,7 @@ onMounted(async () => {
   try {
     const data = await authApi.login(tg.initData)
     localStorage.setItem('token', data.token)
+    localStorage.setItem('user_id', data.user_id)
 
     // Если есть invite, показать экран принятия дуэли
     if (inviteDuelId.value) {
@@ -140,6 +143,8 @@ function closeAcceptDuel(): void {
         :duel="duelStore.currentDuel"
       />
 
+      <RulesModal v-if="showRules" @close="showRules = false" />
+
       <div class="stats">
         <div class="stat-card">
           <div class="stat-value">0</div>
@@ -154,6 +159,10 @@ function closeAcceptDuel(): void {
           <div class="stat-label">Винрейт</div>
         </div>
       </div>
+
+      <button class="btn-rules" @click="showRules = true">
+        📖 Правила игры
+      </button>
     </template>
   </div>
 </template>
@@ -177,7 +186,7 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 40px 20px;
+  padding: 40px 20px 100px;
   min-height: 100vh;
 }
 
@@ -289,6 +298,29 @@ body {
   50% {
     box-shadow: 0 4px 30px rgba(162, 155, 254, 0.6);
   }
+}
+
+.btn-rules {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: #c0c0d0;
+  border-radius: 12px;
+  padding: 12px 24px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  width: 100%;
+  max-width: 340px;
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  transition: all 0.2s;
+}
+
+.btn-rules:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.12);
 }
 
 .stats {

@@ -23,6 +23,7 @@ export interface Page {
 // Auth
 export interface LoginResponse {
   token: string
+  user_id: string
 }
 
 // Create Duel

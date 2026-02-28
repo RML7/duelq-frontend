@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useWebSocket, MessageType } from '@/composables/useWebSocket'
 import { useDuelStore } from '@/stores/duel'
 import type { DuelResponse } from '@/api/types'
+import { STORAGE_KEYS } from '@/constants/storage'
 
 interface GameRoomProps {
   duel: DuelResponse
@@ -90,7 +91,7 @@ const categoryLabel = computed(() => {
 // Определяем порядок отображения: Я первый, оппонент второй
 const firstPlayerName = computed(() => {
   if (!gameResult.value) return 'Игрок 1'
-  const userId = localStorage.getItem('user_id')
+  const userId = localStorage.getItem(STORAGE_KEYS.USER_ID)
   if (gameResult.value.creator_id === userId) {
     return gameResult.value.creator_name
   } else {
@@ -100,7 +101,7 @@ const firstPlayerName = computed(() => {
 
 const secondPlayerName = computed(() => {
   if (!gameResult.value) return 'Игрок 2'
-  const userId = localStorage.getItem('user_id')
+  const userId = localStorage.getItem(STORAGE_KEYS.USER_ID)
   if (gameResult.value.creator_id === userId) {
     return gameResult.value.opponent_name
   } else {
@@ -110,13 +111,13 @@ const secondPlayerName = computed(() => {
 
 const iAmCreator = computed(() => {
   if (!gameResult.value) return false
-  const userId = localStorage.getItem('user_id')
+  const userId = localStorage.getItem(STORAGE_KEYS.USER_ID)
   return gameResult.value.creator_id === userId
 })
 
 const iAmWinner = computed(() => {
   if (!gameResult.value) return false
-  const userId = localStorage.getItem('user_id')
+  const userId = localStorage.getItem(STORAGE_KEYS.USER_ID)
   if (gameResult.value.winner === 'draw') return false
   
   if (gameResult.value.creator_id === userId) {
@@ -141,7 +142,7 @@ onMounted(() => {
   onMessage(MessageType.ROUND_RESULT, handleRoundResult)
   onMessage(MessageType.GAME_FINISHED, handleGameFinished)
 
-  const token = localStorage.getItem('token')
+  const token = localStorage.getItem(STORAGE_KEYS.TOKEN)
   if (token) {
     connect(duel.value.id, token)
   } else {

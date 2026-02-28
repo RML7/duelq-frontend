@@ -7,6 +7,7 @@ import Toast from '@/components/Toast.vue'
 import AcceptDuelView from '@/components/AcceptDuelView.vue'
 import RulesModal from '@/components/RulesModal.vue'
 import { useDuelStore } from '@/stores/duel'
+import { STORAGE_KEYS } from '@/constants/storage'
 
 interface TelegramUser {
   id: number
@@ -64,8 +65,8 @@ onMounted(async () => {
 
   try {
     const data = await authApi.login(tg.initData)
-    localStorage.setItem('token', data.token)
-    localStorage.setItem('user_id', data.user_id)
+    localStorage.setItem(STORAGE_KEYS.TOKEN, data.token)
+    localStorage.setItem(STORAGE_KEYS.USER_ID, data.user_id)
 
     // Если есть invite, показать экран принятия дуэли
     if (inviteDuelId.value) {

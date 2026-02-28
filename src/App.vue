@@ -58,10 +58,8 @@ onMounted(async () => {
 
   // Извлечь duel_id из startapp параметра
   const startParam = tg.initDataUnsafe?.start_param
-  console.log('Telegram start_param:', startParam)
   if (startParam) {
     inviteDuelId.value = startParam
-    console.log('inviteDuelId set to:', inviteDuelId.value)
   }
 
   try {

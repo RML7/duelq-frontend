@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
 import { authApi } from '@/api/auth'
+import { duelsApi } from '@/api/duels'
 import ChallengeModal from '@/components/ChallengeModal.vue'
 import GameRoom from '@/components/GameRoom.vue'
 import Toast from '@/components/Toast.vue'
@@ -64,22 +65,26 @@ onMounted(async () => {
   }
 
   try {
-    const data = await authApi.login(tg.initData)
-    localStorage.setItem(STORAGE_KEYS.TOKEN, data.token)
-    localStorage.setItem(STORAGE_KEYS.USER_ID, data.user_id)
+    const loginResponse = await authApi.login(tg.initData)
+    localStorage.setItem(STORAGE_KEYS.TOKEN, loginResponse.token)
+    localStorage.setItem(STORAGE_KEYS.USER_ID, loginResponse.user_id)
 
-    // Если есть invite, показать экран принятия дуэли
+    // Если есть invite и это не создатель дуэли — показать экран принятия
     if (inviteDuelId.value) {
-      showAcceptDuel.value = true
-    } else {
-      // Иначе проверить наличие активных дуэлей
-      await duelStore.checkActiveDuel()
+      const duel = await duelsApi.getDuel(inviteDuelId.value)
+      if (duel.creator_id !== loginResponse.user_id) {
+        showAcceptDuel.value = true
+        return
+      }
     }
+
+    // В остальных случаях проверить наличие активных дуэлей
+    await duelStore.checkActiveDuel()
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'Произошла ошибка'
+  } finally {
+    loading.value = false
   }
-
-  loading.value = false
 })
 
 function resumeDuel(): void {

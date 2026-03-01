@@ -13,6 +13,7 @@ export interface DuelResponse {
   creator_id: string
   opponent_id?: string
   created_at: string
+  expires_at: string
 }
 
 export interface Page {

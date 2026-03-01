@@ -170,18 +170,17 @@ onUnmounted(() => {
 })
 
 function startWaitingTimer(): void {
-  if (step.value !== 'waiting' || !duel.value?.created_at) return
+  if (step.value !== 'waiting' || !duel.value?.expires_at) return
 
   function updateWaitingTime(): void {
-    if (!duel.value?.created_at) {
+    if (!duel.value?.expires_at) {
       stopWaitingTimer()
       return
     }
 
-    const createdTime = new Date(duel.value.created_at).getTime()
+    const expiresTime = new Date(duel.value.expires_at).getTime()
     const now = Date.now()
-    const elapsed = Math.floor((now - createdTime) / 1000)
-    const remaining = DUEL_TIMEOUT_SECONDS - elapsed
+    const remaining = Math.max(0, Math.floor((expiresTime - now) / 1000))
 
     if (remaining <= 0) {
       timeRemaining.value = 0

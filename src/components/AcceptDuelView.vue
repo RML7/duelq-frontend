@@ -35,6 +35,7 @@ async function handleAccept() {
     duelStore.openGameRoom(response.duel)
   } catch (e) {
     console.error('Accept duel error:', e)
+  } finally {
     handleClose()
   }
 }
@@ -42,9 +43,9 @@ async function handleAccept() {
 async function handleCancel() {
   try {
     await duelsApi.respond(props.duelId, 'cancel')
-    handleClose()
   } catch (e) {
     console.error('Cancel duel error:', e)
+  } finally {
     handleClose()
   }
 }

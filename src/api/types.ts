@@ -27,6 +27,17 @@ export interface LoginResponse {
   user_id: string
 }
 
+// User
+export interface UserResponse {
+  id: string
+  tg_id: number
+  username: string | null
+  first_name: string
+  coins_balance: number
+  last_active_at: string
+  created_at: string
+}
+
 // Create Duel
 export interface CreateDuelRequest {
   stake: number

@@ -2,6 +2,7 @@
 import { computed, ref, onMounted } from 'vue'
 import { authApi } from '@/api/auth'
 import { duelsApi } from '@/api/duels'
+import { usersApi } from '@/api/users'
 import ChallengeModal from '@/components/ChallengeModal.vue'
 import GameRoom from '@/components/GameRoom.vue'
 import Toast from '@/components/Toast.vue'
@@ -43,6 +44,8 @@ const duelStore = useDuelStore()
 const inviteDuelId = ref<string | null>(null)
 const showAcceptDuel = ref<boolean>(false)
 const showRules = ref<boolean>(false)
+const coinsBalance = ref<number>(0)
+const showBalance = ref<boolean>(false)
 
 onMounted(async () => {
   const tg = window.Telegram?.WebApp
@@ -66,6 +69,15 @@ onMounted(async () => {
     const loginResponse = await authApi.login(tg.initData)
     localStorage.setItem(STORAGE_KEYS.TOKEN, loginResponse.token)
     localStorage.setItem(STORAGE_KEYS.USER_ID, loginResponse.user_id)
+
+    // Загрузить данные пользователя
+    const userData = await usersApi.getUser(loginResponse.user_id)
+    coinsBalance.value = userData.coins_balance
+    
+    // Показать баланс с небольшой задержкой для анимации
+    setTimeout(() => {
+      showBalance.value = true
+    }, 300)
 
     // Если есть invite и это не создатель дуэли — показать экран принятия
     if (inviteDuelId.value) {
@@ -117,10 +129,10 @@ function closeAcceptDuel(): void {
       <div class="logo">DuelQ</div>
       <p class="subtitle">Интеллектуальные дуэли</p>
 
-      <div class="balance-bar">
-        <span class="star-icon">⭐</span>
-        <span class="balance-amount">0</span>
-        <span class="balance-label">Stars</span>
+      <div class="balance-bar" :class="{ 'balance-visible': showBalance }">
+        <img src="@/assets/icons/coin.png" alt="coin" class="coin-icon" />
+        <span class="balance-amount">{{ coinsBalance }}</span>
+        <span class="balance-label">Coins</span>
         <button class="add-btn">+</button>
       </div>
 
@@ -217,6 +229,7 @@ body {
   font-size: 36px;
   font-weight: 700;
   background: linear-gradient(135deg, #6c5ce7, #a29bfe, #fd79a8);
+  background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   margin-bottom: 4px;
@@ -242,9 +255,40 @@ body {
   width: 100%;
   max-width: 340px;
   margin-bottom: 24px;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.star-icon { font-size: 20px; }
+.balance-bar.balance-visible {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.coin-icon { 
+  width: 32px;
+  height: 32px;
+  animation: coinFlip 1s ease-in-out;
+  flex-shrink: 0;
+}
+
+@keyframes coinFlip {
+  0% {
+    transform: rotateY(0deg) translateY(0px);
+  }
+  25% {
+    transform: rotateY(90deg) translateY(-10px);
+  }
+  50% {
+    transform: rotateY(180deg) translateY(-15px);
+  }
+  75% {
+    transform: rotateY(270deg) translateY(-10px);
+  }
+  100% {
+    transform: rotateY(360deg) translateY(0px);
+  }
+}
 
 .balance-amount {
   font-family: 'JetBrains Mono', monospace;

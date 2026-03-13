@@ -53,7 +53,7 @@ interface RoundResult {
   opponent_correct: boolean
   creator_response_time_ms: number | null
   opponent_response_time_ms: number | null
-  winner: 'creator' | 'opponent' | 'draw'
+  winner: string | null // UUID победителя или null (ничья)
 }
 
 interface GameFinishedData {
@@ -61,7 +61,7 @@ interface GameFinishedData {
   opponent_id: string
   creator_name: string
   opponent_name: string
-  winner: 'creator' | 'opponent' | 'draw'
+  winner: string | null // UUID победителя или null (ничья)
   rounds: RoundResult[]
 }
 
@@ -118,17 +118,13 @@ const iAmCreator = computed(() => {
 const iAmWinner = computed(() => {
   if (!gameResult.value) return false
   const userId = localStorage.getItem(STORAGE_KEYS.USER_ID)
-  if (gameResult.value.winner === 'draw') return false
+  if (gameResult.value.winner === null) return false // Ничья
   
-  if (gameResult.value.creator_id === userId) {
-    return gameResult.value.winner === 'creator'
-  } else {
-    return gameResult.value.winner === 'opponent'
-  }
+  return gameResult.value.winner === userId
 })
 
 const isDraw = computed(() => {
-  return gameResult.value?.winner === 'draw'
+  return gameResult.value?.winner === null
 })
 
 let waitingTimer: number | null = null
@@ -272,7 +268,6 @@ function shareLink(): void {
 }
 
 function handleGameReady(data: GameReadyData): void {
-  console.log('🎮 Game is ready!', data)
   duel.value = data.duel
   duelStore.updateActiveDuel(data.duel)
   stopWaitingTimer()
@@ -280,16 +275,12 @@ function handleGameReady(data: GameReadyData): void {
 }
 
 function handleQuestion(data: QuestionMessageData): void {
-  console.log('📝 New question:', data)
-
   // 1. Вычисляем clock offset между клиентом и сервером
   const clockOffset = data.server_time - Date.now()
-  console.log('⏰ Clock offset:', clockOffset, 'ms')
 
   // 2. Корректируем время старта раунда под клиентские часы
   const roundStartsAtClient = data.round_starts_at - clockOffset
   const delayUntilStart = roundStartsAtClient - Date.now()
-  console.log('⏱️ Delay until start:', delayUntilStart, 'ms')
 
   // Сохраняем вопрос (но не показываем его пока)
   currentQuestion.value = {
@@ -309,12 +300,10 @@ function handleQuestion(data: QuestionMessageData): void {
   // 3. Подождать до старта раунда, потом показать вопрос и запустить таймер
   if (delayUntilStart > 0) {
     // Нормальный случай: показываем экран ожидания с обратным отсчетом
-    console.log('⏳ Waiting', delayUntilStart, 'ms before starting round')
     step.value = 'round_starting'
     startCountdown(delayUntilStart)
     
     startDelayTimeout = window.setTimeout(() => {
-      console.log('🚀 Starting round now!')
       step.value = 'playing'
       stopCountdown()
       startQuestionTimer(data.timeout_sec * 1000)
@@ -322,14 +311,12 @@ function handleQuestion(data: QuestionMessageData): void {
   } else {
     // Опоздали: показываем вопрос сразу с уменьшенным таймером
     const remainingTime = data.timeout_sec * 1000 + delayUntilStart
-    console.log('⚡ Starting immediately with remaining time:', remainingTime, 'ms')
     step.value = 'playing'
     startQuestionTimer(Math.max(0, remainingTime))
   }
 }
 
 function handleRoundResult(data: RoundResultData): void {
-  console.log('📊 Round result:', data)
   stopQuestionTimer()
   roundResult.value = data
   // Не меняем step - просто ждем следующий question от сервера
@@ -337,28 +324,19 @@ function handleRoundResult(data: RoundResultData): void {
 }
 
 function handleGameFinished(data: GameFinishedData): void {
-  console.log('🏁 Game finished:', data)
   stopQuestionTimer()
   stopWaitingTimer()
   stopCountdown()
   gameResult.value = data
   step.value = 'finished'
-  console.log('✅ Step changed to finished, gameResult:', gameResult.value)
 }
 
 function selectAnswer(answerLetter: string): void {
-  if (answered.value) {
-    console.log('⚠️ Already answered, ignoring click')
-    return
-  }
+  if (answered.value) return
 
-  console.log('👆 User clicked answer:', answerLetter)
-  
   selectedAnswer.value = answerLetter
   answered.value = true
 
-  console.log('📤 Sending answer to server:', answerLetter)
-  
   // Отправляем ответ на сервер
   send({
     type: MessageType.ANSWER,
@@ -366,8 +344,6 @@ function selectAnswer(answerLetter: string): void {
       answer: answerLetter
     }
   })
-
-  console.log('✅ Answer sent successfully:', answerLetter)
 }
 
 function finishGame(): void {
@@ -525,7 +501,7 @@ function finishGame(): void {
                       }">
                         {{ (iAmCreator ? round.creator_correct : round.opponent_correct) ? '✓' : '✗' }}
                       </span>
-                      <span class="crown" v-if="(iAmCreator && round.winner === 'creator') || (!iAmCreator && round.winner === 'opponent')">👑</span>
+                      <span class="crown" v-if="round.winner && round.winner === (iAmCreator ? gameResult.creator_id : gameResult.opponent_id)">👑</span>
                     </div>
                     <span class="response-time">
                       {{ (iAmCreator ? round.creator_response_time_ms : round.opponent_response_time_ms) !== null 
@@ -545,7 +521,7 @@ function finishGame(): void {
                       }">
                         {{ (iAmCreator ? round.opponent_correct : round.creator_correct) ? '✓' : '✗' }}
                       </span>
-                      <span class="crown" v-if="(iAmCreator && round.winner === 'opponent') || (!iAmCreator && round.winner === 'creator')">👑</span>
+                      <span class="crown" v-if="round.winner && round.winner === (iAmCreator ? gameResult.opponent_id : gameResult.creator_id)">👑</span>
                     </div>
                     <span class="response-time">
                       {{ (iAmCreator ? round.opponent_response_time_ms : round.creator_response_time_ms) !== null 

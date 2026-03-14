@@ -8,6 +8,7 @@ import GameRoom from '@/components/GameRoom.vue'
 import Toast from '@/components/Toast.vue'
 import AcceptDuelView from '@/components/AcceptDuelView.vue'
 import RulesModal from '@/components/RulesModal.vue'
+import TopUpModal from '@/components/TopUpModal.vue'
 import { useDuelStore } from '@/stores/duel'
 import { STORAGE_KEYS } from '@/constants/storage'
 
@@ -46,6 +47,7 @@ const showAcceptDuel = ref<boolean>(false)
 const showRules = ref<boolean>(false)
 const coinsBalance = ref<number>(0)
 const showBalance = ref<boolean>(false)
+const showTopUp = ref<boolean>(false)
 
 onMounted(async () => {
   const tg = window.Telegram?.WebApp
@@ -108,6 +110,14 @@ function closeAcceptDuel(): void {
   // После закрытия проверить активные дуэли
   duelStore.checkActiveDuel()
 }
+
+function openTopUp(): void {
+  showTopUp.value = true
+}
+
+function closeTopUp(): void {
+  showTopUp.value = false
+}
 </script>
 
 <template>
@@ -133,7 +143,7 @@ function closeAcceptDuel(): void {
         <img src="@/assets/icons/coin.png" alt="coin" class="coin-icon" />
         <span class="balance-amount">{{ coinsBalance }}</span>
         <span class="balance-label">Coins</span>
-        <button class="add-btn">+</button>
+        <button class="add-btn" @click="openTopUp">+</button>
       </div>
 
       <button 
@@ -160,6 +170,8 @@ function closeAcceptDuel(): void {
       />
 
       <RulesModal v-if="showRules" @close="showRules = false" />
+
+      <TopUpModal v-if="showTopUp" @close="closeTopUp" />
 
       <div class="stats">
         <div class="stat-card">
@@ -315,6 +327,29 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: all 0.2s;
+}
+
+.add-btn:hover {
+  background: rgba(255,193,7,0.25);
+  transform: scale(1.1);
+}
+
+.add-btn:active {
+  transform: scale(0.95);
+  animation: btnPulse 0.3s ease-out;
+}
+
+@keyframes btnPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(255, 193, 7, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 193, 7, 0);
+  }
 }
 
 .btn-play,

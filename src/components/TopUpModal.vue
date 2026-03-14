@@ -21,7 +21,7 @@ const isBelowMinimum = computed(() => {
   return coinsAmount.value > 0 && coinsAmount.value < minAmount
 })
 
-const tonWalletAddress = 'UQD..._hardcoded_address'
+const tonWalletAddress = '0QA5WUZ7ZHkuIh_A99lKWHxY_E1nyvj8lzbSS0dTl1ZUpShr'
 const userId = localStorage.getItem('user_id') || 'unknown'
 const copiedAddress = ref(false)
 const copiedComment = ref(false)

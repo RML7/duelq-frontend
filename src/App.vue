@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { authApi } from '@/api/auth'
 import { duelsApi } from '@/api/duels'
 import { usersApi } from '@/api/users'
@@ -8,7 +8,7 @@ import GameRoom from '@/components/GameRoom.vue'
 import Toast from '@/components/Toast.vue'
 import AcceptDuelView from '@/components/AcceptDuelView.vue'
 import RulesModal from '@/components/RulesModal.vue'
-import TopUpModal from '@/components/TopUpModal.vue'
+import WalletModal from '@/components/WalletModal.vue'
 import { useDuelStore } from '@/stores/duel'
 import { STORAGE_KEYS } from '@/constants/storage'
 
@@ -47,7 +47,7 @@ const showAcceptDuel = ref<boolean>(false)
 const showRules = ref<boolean>(false)
 const coinsBalance = ref<number>(0)
 const showBalance = ref<boolean>(false)
-const showTopUp = ref<boolean>(false)
+const showWallet = ref<boolean>(false)
 
 onMounted(async () => {
   const tg = window.Telegram?.WebApp
@@ -111,12 +111,12 @@ function closeAcceptDuel(): void {
   duelStore.checkActiveDuel()
 }
 
-function openTopUp(): void {
-  showTopUp.value = true
+function openWallet(): void {
+  showWallet.value = true
 }
 
-function closeTopUp(): void {
-  showTopUp.value = false
+function closeWallet(): void {
+  showWallet.value = false
 }
 </script>
 
@@ -143,7 +143,7 @@ function closeTopUp(): void {
         <img src="@/assets/icons/coin.png" alt="coin" class="coin-icon" />
         <span class="balance-amount">{{ coinsBalance }}</span>
         <span class="balance-label">Coins</span>
-        <button class="add-btn" @click="openTopUp">+</button>
+        <button class="add-btn" @click="openWallet">+</button>
       </div>
 
       <button 
@@ -171,22 +171,7 @@ function closeTopUp(): void {
 
       <RulesModal v-if="showRules" @close="showRules = false" />
 
-      <TopUpModal v-if="showTopUp" @close="closeTopUp" />
-
-      <div class="stats">
-        <div class="stat-card">
-          <div class="stat-value">0</div>
-          <div class="stat-label">Игр</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value wins">0</div>
-          <div class="stat-label">Побед</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value rate">0%</div>
-          <div class="stat-label">Винрейт</div>
-        </div>
-      </div>
+      <WalletModal v-if="showWallet" :balance="coinsBalance" @close="closeWallet" />
 
       <button class="btn-rules" @click="showRules = true">
         📖 Правила игры
@@ -404,38 +389,5 @@ body {
 .btn-rules:hover {
   background: rgba(255,255,255,0.08);
   border-color: rgba(255,255,255,0.12);
-}
-
-.stats {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 10px;
-  width: 100%;
-  max-width: 340px;
-}
-
-.stat-card {
-  background: #12121a;
-  border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 16px;
-  padding: 14px 12px;
-  text-align: center;
-}
-
-.stat-value {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 22px;
-  font-weight: 700;
-}
-
-.stat-value.wins { color: #00e676; }
-.stat-value.rate { color: #a29bfe; }
-
-.stat-label {
-  font-size: 11px;
-  color: #55556a;
-  margin-top: 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 </style>

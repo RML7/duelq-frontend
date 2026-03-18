@@ -140,7 +140,6 @@ function closeWallet(): void {
       <p class="subtitle">Интеллектуальные дуэли</p>
 
       <div class="balance-bar" :class="{ 'balance-visible': showBalance }">
-        <img src="@/assets/icons/coin.png" alt="coin" class="coin-icon" />
         <span class="balance-amount">{{ coinsBalance }}</span>
         <span class="balance-label">Coins</span>
         <button class="add-btn" @click="openWallet">+</button>

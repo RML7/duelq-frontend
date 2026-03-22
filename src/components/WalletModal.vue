@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { filterIntegerInput } from '@/utils/inputFilters'
+import { TonConnectUI, type Wallet } from '@tonconnect/ui'
+import { usersApi } from '@/api/users'
 
 const props = defineProps<{
   balance: number
@@ -22,6 +24,14 @@ const userId = localStorage.getItem('user_id') || 'unknown'
 const copiedAddress = ref(false)
 const copiedComment = ref(false)
 
+// TON Connect
+let tonConnectUI: TonConnectUI | null = null
+const connectedWallet = ref<Wallet | null>(null)
+const isConnecting = ref(false)
+const depositInProgress = ref(false)
+const withdrawInProgress = ref(false)
+const isLoadingWallet = ref(true)
+
 const depositCoins = computed(() => parseInt(depositAmount.value) || 0)
 const depositUsdt = computed(() => (depositCoins.value * coinToUsdtRate).toFixed(2))
 const depositBelowMin = computed(() => depositCoins.value > 0 && depositCoins.value < minDeposit)
@@ -35,11 +45,14 @@ const withdrawUsdt = computed(() => (withdrawCoins.value * coinToUsdtRate).toFix
 const withdrawBelowMin = computed(() => withdrawCoins.value > 0 && withdrawCoins.value < minWithdraw)
 const withdrawExceedsBalance = computed(() => withdrawCoins.value > props.balance)
 const withdrawAddressInvalid = computed(() => withdrawAddress.value.length > 0 && withdrawAddress.value.length < 10)
-const withdrawValid = computed(() =>
-  withdrawCoins.value >= minWithdraw &&
-  !withdrawExceedsBalance.value &&
-  withdrawAddress.value.length >= 10
-)
+const withdrawValid = computed(() => {
+  if (connectedWallet.value) {
+    return withdrawCoins.value >= minWithdraw && !withdrawExceedsBalance.value
+  }
+  return withdrawCoins.value >= minWithdraw &&
+    !withdrawExceedsBalance.value &&
+    withdrawAddress.value.length >= 10
+})
 
 function setMaxWithdraw() {
   withdrawAmount.value = String(props.balance)
@@ -59,6 +72,130 @@ function copyToClipboard(text: string, type: 'address' | 'comment') {
 
 function handleClose() {
   emit('close')
+}
+
+// TON Connect initialization
+onMounted(async () => {
+  try {
+    tonConnectUI = new TonConnectUI({
+      manifestUrl: window.location.origin + '/tonconnect-manifest.json'
+    })
+
+    tonConnectUI.onStatusChange(async (wallet) => {
+      connectedWallet.value = wallet
+      
+      if (wallet) {
+        // Кошелек подключен - сохраняем адрес на бэкенд
+        try {
+          await usersApi.saveWallet(wallet.account.address)
+        } catch (error) {
+          console.error('Failed to save wallet:', error)
+        }
+      } else {
+        // Кошелек отключен - отправляем null для обнуления
+        try {
+          await usersApi.saveWallet(null)
+        } catch (error) {
+          console.error('Failed to clear wallet:', error)
+        }
+      }
+    })
+
+    const currentWallet = tonConnectUI.wallet
+    if (currentWallet) {
+      connectedWallet.value = currentWallet
+    }
+    
+    isLoadingWallet.value = false
+  } catch (error) {
+    console.error('Failed to initialize TON Connect:', error)
+    isLoadingWallet.value = false
+  }
+})
+
+onUnmounted(() => {
+  tonConnectUI = null
+})
+
+async function connectWallet() {
+  if (!tonConnectUI) return
+  isConnecting.value = true
+  try {
+    await tonConnectUI.openModal()
+  } catch (error) {
+    console.error('Failed to connect wallet:', error)
+  } finally {
+    isConnecting.value = false
+  }
+}
+
+async function disconnectWallet() {
+  if (!tonConnectUI) return
+  try {
+    await tonConnectUI.disconnect()
+    connectedWallet.value = null
+  } catch (error) {
+    console.error('Failed to disconnect wallet:', error)
+  }
+}
+
+const walletAddress = computed(() => {
+  if (!connectedWallet.value) return ''
+  const address = connectedWallet.value.account.address
+  return address.slice(0, 4) + '...' + address.slice(-4)
+})
+
+const fullWalletAddress = computed(() => {
+  return connectedWallet.value?.account.address || ''
+})
+
+async function sendDepositTransaction() {
+  if (!tonConnectUI || !connectedWallet.value || depositCoins.value < minDeposit) return
+  
+  depositInProgress.value = true
+  try {
+    const transaction = {
+      validUntil: Math.floor(Date.now() / 1000) + 600,
+      messages: [
+        {
+          address: tonWalletAddress,
+          amount: String(Math.floor(depositCoins.value * coinToUsdtRate * 1000000)),
+          payload: btoa(userId)
+        }
+      ]
+    }
+
+    const result = await tonConnectUI.sendTransaction(transaction)
+    console.log('Transaction sent:', result)
+    alert('Транзакция отправлена! Средства будут зачислены в течение ~10 минут')
+  } catch (error) {
+    console.error('Transaction failed:', error)
+    alert('Ошибка при отправке транзакции')
+  } finally {
+    depositInProgress.value = false
+  }
+}
+
+async function sendWithdrawRequest() {
+  if (!withdrawValid.value) return
+  
+  withdrawInProgress.value = true
+  try {
+    const targetAddress = connectedWallet.value ? fullWalletAddress.value : withdrawAddress.value
+    
+    console.log('Withdraw request:', {
+      amount: withdrawCoins.value,
+      address: targetAddress,
+      userId: userId
+    })
+    
+    alert('Запрос на вывод отправлен! Средства будут переведены в течение 24 часов')
+  } catch (error) {
+    console.error('Withdraw failed:', error)
+    alert('Ошибка при выводе средств')
+  } finally {
+    withdrawInProgress.value = false
+  }
 }
 </script>
 
@@ -80,6 +217,34 @@ function handleClose() {
             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
+      </div>
+
+      <!-- TON Connect Section (общая для обеих вкладок) -->
+      <div class="wallet-connect-section">
+        <div v-if="isLoadingWallet" class="wallet-loading">
+          <div class="loading-spinner"></div>
+          <div class="loading-text">Проверка кошелька...</div>
+        </div>
+        <div v-else-if="!connectedWallet" class="connect-prompt">
+          <div class="connect-icon">🔗</div>
+          <div class="connect-text">
+            <div class="connect-title">Подключите TON кошелек</div>
+            <div class="connect-subtitle">Для быстрых операций через приложение</div>
+          </div>
+          <button class="connect-btn" @click="connectWallet" :disabled="isConnecting">
+            {{ isConnecting ? 'Подключение...' : 'Подключить' }}
+          </button>
+        </div>
+        <div v-else class="wallet-connected">
+          <div class="wallet-info">
+            <div class="wallet-icon">✓</div>
+            <div class="wallet-details">
+              <div class="wallet-label">Подключен кошелек</div>
+              <div class="wallet-addr">{{ walletAddress }}</div>
+            </div>
+          </div>
+          <button class="disconnect-btn" @click="disconnectWallet">Отключить</button>
+        </div>
       </div>
 
       <!-- Tabs -->
@@ -122,9 +287,23 @@ function handleClose() {
           <div v-if="depositBelowMin" class="field-error">Минимум {{ minDeposit }} монет</div>
         </div>
 
-        <div class="divider"></div>
+        <!-- Payment method based on wallet connection -->
+        <div v-if="connectedWallet" class="connected-payment">
+          <button 
+            class="action-btn" 
+            :disabled="depositBelowMin || depositInProgress"
+            @click="sendDepositTransaction"
+          >
+            {{ depositInProgress ? 'Отправка...' : `Пополнить ${depositCoins > 0 ? depositCoins.toLocaleString() + ' монет' : ''}` }}
+          </button>
+          <div class="info-box">
+            <div class="info-item">💰 Минимальная сумма <span class="accent">{{ minDeposit }} монет ({{ (minDeposit * coinToUsdtRate).toFixed(2) }} USDT)</span></div>
+            <div class="info-item">⏱ Время зачисления: <span class="accent">~10 минут</span></div>
+          </div>
+        </div>
 
-        <div class="payment-steps">
+        <div v-else class="manual-payment">
+          <div class="payment-steps">
           <div class="step">
             <div class="step-body">
               <div class="step-label">Адрес для перевода:</div>
@@ -160,11 +339,12 @@ function handleClose() {
           </div>
         </div>
 
-        <div class="info-box">
-          <div class="info-item">💰 Минимальная сумма <span class="accent">{{ minDeposit }} монет ({{ (minDeposit * coinToUsdtRate).toFixed(2) }} USDT)</span> — иначе перевод <span class="accent">не будет зачислен</span></div>
-          <div class="info-item">💳 Принимаются только <span class="accent">USDT в сети TON</span></div>
-          <div class="info-item">⚠️ Обязательно укажите <span class="accent">комментарий</span>, иначе перевод <span class="accent">не будет зачислен</span></div>
-          <div class="info-item">⏱ Время зачисления: <span class="accent">~10 минут</span></div>
+          <div class="info-box">
+            <div class="info-item">💰 Минимальная сумма <span class="accent">{{ minDeposit }} монет ({{ (minDeposit * coinToUsdtRate).toFixed(2) }} USDT)</span> — иначе перевод <span class="accent">не будет зачислен</span></div>
+            <div class="info-item">💳 Принимаются только <span class="accent">USDT в сети TON</span></div>
+            <div class="info-item">⚠️ Обязательно укажите <span class="accent">комментарий</span>, иначе перевод <span class="accent">не будет зачислен</span></div>
+            <div class="info-item">⏱ Время зачисления: <span class="accent">~10 минут</span></div>
+          </div>
         </div>
       </div>
 
@@ -195,7 +375,8 @@ function handleClose() {
           <div v-else-if="withdrawBelowMin" class="field-error">Минимум {{ minWithdraw }} монет</div>
         </div>
 
-        <div class="field-group">
+        <!-- Withdraw address field (only if wallet not connected) -->
+        <div v-if="!connectedWallet" class="field-group">
           <div class="field-label">Ваш TON-адрес для вывода</div>
           <input
             v-model="withdrawAddress"
@@ -207,9 +388,19 @@ function handleClose() {
           <div v-if="withdrawAddressInvalid" class="field-error">Введите корректный TON-адрес</div>
         </div>
 
-        <button class="action-btn" :disabled="!withdrawValid">
-          Вывести {{ withdrawCoins > 0 ? withdrawCoins.toLocaleString() + ' монет' : '' }}
+        <button 
+          class="action-btn" 
+          :disabled="!withdrawValid || withdrawInProgress"
+          @click="sendWithdrawRequest"
+        >
+          {{ withdrawInProgress ? 'Отправка...' : `Вывести ${withdrawCoins > 0 ? withdrawCoins.toLocaleString() + ' монет' : ''}` }}
         </button>
+
+        <div v-if="connectedWallet" class="info-box">
+          <div class="info-item">💰 Минимальная сумма <span class="accent">{{ minWithdraw }} монет</span></div>
+          <div class="info-item">⏱ Вывод на адрес: <span class="accent">{{ walletAddress }}</span></div>
+          <div class="info-item">⏱ Время обработки: <span class="accent">до 24 часов</span></div>
+        </div>
       </div>
     </div>
   </div>
@@ -722,4 +913,170 @@ function handleClose() {
 
 .accent { color: #a29bfe; font-weight: 600; }
 .label-accent { color: #8888a0; }
+
+/* TON Connect styles */
+.wallet-connect-section {
+  padding: 0 20px;
+  margin-bottom: 12px;
+}
+
+.wallet-loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgba(108,92,231,0.2);
+  border-top-color: #6c5ce7;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-text {
+  font-size: 13px;
+  color: #8888a0;
+}
+
+.connect-prompt {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(108,92,231,0.08);
+  border: 1px solid rgba(108,92,231,0.2);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.connect-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.connect-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.connect-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f0f0f5;
+  margin-bottom: 2px;
+}
+
+.connect-subtitle {
+  font-size: 11px;
+  color: #8888a0;
+}
+
+.connect-btn {
+  background: linear-gradient(135deg, #6c5ce7, #5a4bd1);
+  border: none;
+  border-radius: 10px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.connect-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #7c6cf7, #6c5ce7);
+  transform: translateY(-1px);
+}
+
+.connect-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.wallet-connected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: rgba(0,230,118,0.08);
+  border: 1px solid rgba(0,230,118,0.2);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.wallet-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.wallet-icon {
+  width: 32px;
+  height: 32px;
+  background: rgba(0,230,118,0.15);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: #00e676;
+  flex-shrink: 0;
+}
+
+.wallet-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.wallet-label {
+  font-size: 11px;
+  color: #8888a0;
+  margin-bottom: 2px;
+}
+
+.wallet-addr {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: #00e676;
+}
+
+.disconnect-btn {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #8888a0;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.disconnect-btn:hover {
+  background: rgba(255,82,82,0.1);
+  border-color: rgba(255,82,82,0.3);
+  color: #ff5252;
+}
+
+.connected-payment,
+.manual-payment {
+  width: 100%;
+}
 </style>

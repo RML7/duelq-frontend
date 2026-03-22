@@ -51,24 +51,33 @@ const showWallet = ref<boolean>(false)
 
 onMounted(async () => {
   const tg = window.Telegram?.WebApp
-  if (!tg) {
+
+  if (tg) {
+    tg.ready()
+    tg.expand()
+    user.value = tg.initDataUnsafe?.user || null
+    const startParam = tg.initDataUnsafe?.start_param
+    if (startParam) {
+      inviteDuelId.value = startParam
+    }
+  }
+
+  let initData: string = tg?.initData || ''
+  if (!initData && import.meta.env.DEV) {
+    initData = import.meta.env.VITE_DEV_INIT_DATA || ''
+    console.log('[DEV] using VITE_DEV_INIT_DATA:', initData)
+  }
+
+  if (!initData) {
     error.value = 'Telegram SDK не доступен'
     loading.value = false
     return
   }
 
-  tg.ready()
-  tg.expand()
-  user.value = tg.initDataUnsafe?.user || null
-
-  // Извлечь duel_id из startapp параметра
-  const startParam = tg.initDataUnsafe?.start_param
-  if (startParam) {
-    inviteDuelId.value = startParam
-  }
+  console.log("initData: " + initData)
 
   try {
-    const loginResponse = await authApi.login(tg.initData)
+    const loginResponse = await authApi.login(initData)
     localStorage.setItem(STORAGE_KEYS.TOKEN, loginResponse.token)
     localStorage.setItem(STORAGE_KEYS.USER_ID, loginResponse.user_id)
 

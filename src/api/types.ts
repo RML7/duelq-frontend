@@ -34,8 +34,17 @@ export interface UserResponse {
   username: string | null
   first_name: string
   coins_balance: number
+  ton_address?: string | null
   last_active_at: string
   created_at: string
+}
+
+export interface SaveWalletRequest {
+  ton_address: string | null
+}
+
+export interface SaveWalletResponse {
+  user: UserResponse
 }
 
 // Create Duel

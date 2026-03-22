@@ -3,8 +3,9 @@ import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { filterIntegerInput } from '@/utils/inputFilters'
 import { TonConnectUI, type Wallet } from '@tonconnect/ui'
 import { usersApi } from '@/api/users'
+import { STORAGE_KEYS } from '@/constants/storage'
 import { useToast } from '@/composables/useToast'
-import { beginCell, Address, Cell } from '@ton/core'
+import { beginCell, Address } from '@ton/core'
 
 const { showSuccess, showError } = useToast()
 
@@ -23,14 +24,13 @@ const activeTab = ref<Tab>('deposit')
 const depositAmount = ref<string>('100')
 const coinToUsdtRate = 0.01
 const minDeposit = 100
-const tonWalletAddress = '0QA5WUZ7ZHkuIh_A99lKWHxY_E1nyvj8lzbSS0dTl1ZUpShr'
+const tonWalletAddress = (import.meta.env.VITE_DEPOSIT_WALLET_ADDRESS as string) || ''
 const userId = localStorage.getItem('user_id') || 'unknown'
 
-// USDT Jetton constants (из env: testnet в .env.local, mainnet в .env)
-const USDT_MASTER_ADDRESS = import.meta.env.VITE_USDT_MASTER_ADDRESS as string
-const TONCENTER_API_URL = import.meta.env.VITE_TONCENTER_API_URL as string
 const USDT_DECIMALS = 6                 // 1 USDT = 1_000_000 nano-USDT
 const JETTON_GAS_AMOUNT = '100000000'  // 0.1 TON на газ (в нанотонах)
+const TON_ADDR_TEST_ONLY = import.meta.env.VITE_TON_ADDRESS_TEST_ONLY === 'true'
+
 const copiedAddress = ref(false)
 const copiedComment = ref(false)
 
@@ -102,7 +102,13 @@ onMounted(async () => {
 
       if (wallet) {
         try {
-          await usersApi.saveWallet(wallet.account.address)
+          await usersApi.saveWallet(
+            Address.parse(wallet.account.address).toString({
+              bounceable: true,
+              urlSafe: true,
+              testOnly: TON_ADDR_TEST_ONLY
+            })
+          )
         } catch (error) {
           console.error('Failed to save wallet:', error)
         }
@@ -158,57 +164,44 @@ async function disconnectWallet() {
 
 const walletAddress = computed(() => {
   if (!connectedWallet.value) return ''
-  const address = connectedWallet.value.account.address
-  return address.slice(0, 4) + '...' + address.slice(-4)
+  const friendly = Address.parse(connectedWallet.value.account.address).toString({
+    bounceable: false,
+    urlSafe: true,
+    testOnly: TON_ADDR_TEST_ONLY
+  })
+  return friendly.slice(0, 6) + '...' + friendly.slice(-6)
 })
 
 const fullWalletAddress = computed(() => {
-  return connectedWallet.value?.account.address || ''
-})
-
-async function getJettonWalletAddress(userAddress: string): Promise<string> {
-  // Кодируем адрес пользователя как TVM Slice (BOC base64) для аргумента метода
-  const addrBoc = beginCell()
-    .storeAddress(Address.parse(userAddress))
-    .endCell()
-    .toBoc()
-    .toString('base64')
-
-  const tonapiKey = import.meta.env.VITE_TONAPI_KEY || ''
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (tonapiKey) headers['Authorization'] = `Bearer ${tonapiKey}`
-
-  // Вызываем get_wallet_address на мастер-контракте USDT
-  // Это работает даже если кошелёк ещё не инициализирован
-  const res = await fetch(`${TONCENTER_API_URL}/runGetMethod`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      address: USDT_MASTER_ADDRESS,
-      method: 'get_wallet_address',
-      stack: [['tvm.Slice', addrBoc]]
-    })
+  if (!connectedWallet.value) return ''
+  return Address.parse(connectedWallet.value.account.address).toString({
+    bounceable: false,
+    urlSafe: true,
+    testOnly: TON_ADDR_TEST_ONLY
   })
-
-  if (!res.ok) throw new Error(`toncenter error: ${res.status}`)
-  const data = await res.json()
-  if (!data.ok) throw new Error(`get_wallet_address failed: ${data.error}`)
-
-  // Парсим адрес кошелька из возвращённой ячейки
-  const cellB64: string = data.result.stack[0][1].bytes
-  const walletAddr = Cell.fromBase64(cellB64).beginParse().loadAddress()
-  return walletAddr.toString({ bounceable: false })
-}
+})
 
 async function sendDepositTransaction() {
   if (!tonConnectUI || !connectedWallet.value || depositCoins.value < minDeposit) return
 
   depositInProgress.value = true
   try {
+    if (!tonWalletAddress.trim()) {
+      throw new Error('VITE_DEPOSIT_WALLET_ADDRESS is not set')
+    }
+
     const userAddress = connectedWallet.value.account.address
 
-    // Получаем адрес USDT Jetton-кошелька пользователя
-    const jettonWalletAddress = await getJettonWalletAddress(userAddress)
+    const storedUserId = localStorage.getItem(STORAGE_KEYS.USER_ID)
+    if (!storedUserId) {
+      throw new Error('user_id missing in localStorage')
+    }
+
+    const profile = await usersApi.getUser(storedUserId)
+    const jettonWalletAddress = profile.jetton_usdt_address?.trim()
+    if (!jettonWalletAddress) {
+      throw new Error('jetton_usdt_address missing in user profile')
+    }
 
     // Сумма в нано-USDT (6 знаков)
     const usdtNano = BigInt(Math.round(parseFloat(depositUsdt.value) * 10 ** USDT_DECIMALS))
@@ -245,9 +238,10 @@ async function sendDepositTransaction() {
       ]
     }
 
-    const result = await tonConnectUI.sendTransaction(transaction)
+    await tonConnectUI.sendTransaction(transaction)
     showSuccess('Транзакция отправлена! Средства будут зачислены в течение ~10 минут')
   } catch (error) {
+    console.error('[WalletModal] sendDepositTransaction:', error)
     showError('Ошибка при отправке транзакции')
   } finally {
     depositInProgress.value = false

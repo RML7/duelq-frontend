@@ -35,6 +35,7 @@ export interface UserResponse {
   first_name: string
   coins_balance: number
   ton_address?: string | null
+  jetton_usdt_address?: string | null
   last_active_at: string
   created_at: string
 }

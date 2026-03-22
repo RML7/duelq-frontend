@@ -97,27 +97,40 @@ onMounted(async () => {
 
     tonConnectUI.onStatusChange(async (wallet) => {
       connectedWallet.value = wallet
-      // Первый вызов onStatusChange — TonConnect восстановил сессию, можно показывать UI
       isLoadingWallet.value = false
 
-      if (wallet) {
-        try {
-          await usersApi.saveWallet(
-            Address.parse(wallet.account.address).toString({
-              bounceable: true,
-              urlSafe: true,
-              testOnly: TON_ADDR_TEST_ONLY
-            })
-          )
-        } catch (error) {
-          console.error('Failed to save wallet:', error)
+      try {
+        const storedUserId = localStorage.getItem(STORAGE_KEYS.USER_ID)
+        if (!storedUserId) {
+          throw new Error('user_id missing in localStorage')
         }
-      } else {
-        try {
-          await usersApi.saveWallet(null)
-        } catch (error) {
-          console.error('Failed to clear wallet:', error)
-        }
+
+        const walletParsed = wallet ? Address.parse(wallet.account.address) : null
+
+        const profile = await usersApi.getUser(storedUserId)
+        const raw = profile.ton_address?.trim()
+        const backendParsed = raw ? Address.parse(raw) : null
+
+        const same =
+          (walletParsed === null && backendParsed === null) ||
+          (walletParsed !== null &&
+            backendParsed !== null &&
+            walletParsed.equals(backendParsed))
+
+        if (same) return
+
+        await usersApi.saveWallet(
+          walletParsed
+            ? walletParsed.toString({
+                bounceable: true,
+                urlSafe: true,
+                testOnly: TON_ADDR_TEST_ONLY
+              })
+            : null
+        )
+      } catch (error) {
+        console.error('[WalletModal] wallet sync:', error)
+        showError('Что-то пошло не так при подключении кошелька')
       }
     })
 

@@ -54,7 +54,8 @@ export const useDuelStore = defineStore('duel', () => {
   async function checkActiveDuel(): Promise<boolean> {
     try {
       const data = await duelsApi.list({
-        page: { limit: 1, offset: 0 },
+        page: 1,
+        limit: 1,
         status: [...ACTIVE_DUEL_STATUSES],
       })
 

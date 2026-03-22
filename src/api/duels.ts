@@ -23,10 +23,16 @@ export const duelsApi = {
   },
 
   /**
-   * Получить список дуэлей пользователя
+   * Получить список дуэлей пользователя (GET, query: page, limit, status…)
    */
   async list(params: ListDuelsRequest): Promise<ListDuelsResponse> {
-    const { data } = await apiClient.post<ListDuelsResponse>('/duels/list', params)
+    const search = new URLSearchParams()
+    search.set('page', String(params.page))
+    search.set('limit', String(params.limit))
+    for (const s of params.status ?? []) {
+      search.append('status', s)
+    }
+    const { data } = await apiClient.get<ListDuelsResponse>(`/duels/list?${search.toString()}`)
     return data
   },
 

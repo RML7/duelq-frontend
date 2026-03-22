@@ -16,11 +16,6 @@ export interface DuelResponse {
   expires_at: string
 }
 
-export interface Page {
-  limit: number
-  offset: number
-}
-
 // Auth
 export interface LoginResponse {
   token: string
@@ -58,9 +53,12 @@ export interface CreateDuelResponse {
   duel: DuelResponse
 }
 
-// List Duels
+// List Duels (GET /duels/list — query: page, limit, status[])
 export interface ListDuelsRequest {
-  page: Page
+  /** Номер страницы, с 1 */
+  page: number
+  /** Размер страницы, 1…1000 */
+  limit: number
   status?: DuelStatus[]
 }
 
